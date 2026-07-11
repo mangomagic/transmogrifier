@@ -43,7 +43,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE2OTFDMjlGNjU2OEJCNzgKUldSNHUyaGxuOEtSRnZuanJkai9hVWMvMVdQbUdDQTNXKzJuM1BMUU1tNkJZdU10QXcyUm14a0IK",
       "endpoints": [
-        "https://github.com/OWNER/transmogrifier/releases/latest/download/latest.json"
+        "https://github.com/mangomagic/transmogrifier/releases/latest/download/latest.json"
       ]
     }
   }

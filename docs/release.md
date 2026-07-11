@@ -5,7 +5,7 @@
 The repo is local-only. To activate CI and releases:
 
 1. Create the GitHub repo (e.g. `transmogrifier`) and push `main`.
-2. Replace `OWNER` in `src-tauri/tauri.conf.json` → `plugins.updater.endpoints`
+2. Done — updater endpoint points at `mangomagic/transmogrifier`. ~~Replace `OWNER` in `src-tauri/tauri.conf.json`~~ → `plugins.updater.endpoints`
    with the GitHub owner name.
 3. Add two repository secrets (Settings → Secrets → Actions):
    - `TAURI_SIGNING_PRIVATE_KEY` — contents of `~/.tauri/transmogrifier.key`
