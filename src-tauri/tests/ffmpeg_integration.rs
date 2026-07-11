@@ -4,6 +4,7 @@
 
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Once;
 use transmogrifier_lib::encoders::parse_hw_encoders;
 use transmogrifier_lib::ffmpeg_args::{
     build_args, AdvancedSettings, JobSettings, OutputFormat, VideoEncoder, VideoPreset,
@@ -36,16 +37,55 @@ fn sidecar(name: &str) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(name))
 }
 
-/// Fixtures are gitignored; regenerate them if missing (requires ffmpeg on PATH).
-fn ensure_fixtures() -> PathBuf {
-    let fixtures = repo_root().join("fixtures");
-    if !fixtures.join("sample.mov").exists() || !fixtures.join("keyframes.mp4").exists() {
-        let status = Command::new("bash")
-            .arg(fixtures.join("gen_fixtures.sh"))
-            .status()
-            .expect("failed to run gen_fixtures.sh");
-        assert!(status.success(), "gen_fixtures.sh failed");
+fn gen_fixture(out: &PathBuf, extra: &[&str]) {
+    if out.exists() {
+        return;
     }
+    let mut args: Vec<&str> = vec![
+        "-y",
+        "-f", "lavfi", "-i", "testsrc=duration=2:size=320x240:rate=30",
+        "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+        "-c:v", "libx264", "-crf", "28", "-preset", "ultrafast",
+        "-c:a", "aac", "-b:a", "64k",
+    ];
+    args.extend(extra);
+    let out_str = out.to_string_lossy().into_owned();
+    args.push(&out_str);
+    let output = Command::new(sidecar("ffmpeg"))
+        .args(&args)
+        .output()
+        .expect("spawn ffmpeg for fixture generation");
+    assert!(
+        output.status.success(),
+        "fixture {out:?} generation failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// Fixtures are gitignored; generate any missing ones directly with the
+/// ffmpeg binary (no shell — must work on Windows CI too). Mirrors
+/// fixtures/gen_fixtures.sh, which remains for manual regeneration.
+fn ensure_fixtures() -> PathBuf {
+    static INIT: Once = Once::new();
+    let fixtures = repo_root().join("fixtures");
+
+    INIT.call_once(|| {
+        std::fs::create_dir_all(&fixtures).expect("create fixtures dir");
+        gen_fixture(&fixtures.join("sample.mov"), &[]);
+        gen_fixture(&fixtures.join("sample.avi"), &[]);
+        gen_fixture(&fixtures.join("sample.mkv"), &[]);
+        gen_fixture(&fixtures.join("vfr.mkv"), &["-vsync", "vfr"]);
+        // keyframe every 0.5 s for stream-copy trim tests
+        gen_fixture(&fixtures.join("keyframes.mp4"), &["-g", "15"]);
+
+        // Corrupt file: truncated container header
+        let corrupt = fixtures.join("corrupt.mov");
+        if !corrupt.exists() {
+            let bytes = std::fs::read(fixtures.join("sample.mov")).expect("read sample.mov");
+            std::fs::write(&corrupt, &bytes[..512.min(bytes.len())]).expect("write corrupt.mov");
+        }
+    });
+
     fixtures
 }
 
