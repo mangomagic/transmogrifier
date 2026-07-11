@@ -22,7 +22,10 @@ Run `npm run check` after every change. Do not consider a task complete while it
   - `ffmpeg_args.rs` — pure fn `JobSettings -> Vec<String>`. Most-tested file in the repo.
   - `progress.rs` — pure fn: ffmpeg `-progress` output line → `ProgressEvent`.
   - `probe.rs` — ffprobe JSON → `MediaInfo`.
-  - `queue.rs` — job state machine (`queued → running → done | failed | cancelled`).
+  - `queue.rs` — job state machine (`queued → running → done | failed | cancelled`); `claim_next()` is the scheduler's atomic claim step.
+  - `scheduler.rs` — `QueueState` (queue + concurrency) and `pump()`: claims queued jobs up to the concurrency limit, spawns them, re-pumps on completion.
+  - `runner.rs` — runs one ffmpeg job: spawns the sidecar, streams progress, emits started/progress/done/error/cancelled events, returns terminal `JobStatus`.
+  - `thumbs.rs` — pure fns: thumbnail cache key (path+mtime+size hash) and seek point.
   - `commands.rs` — thin `#[tauri::command]` wrappers only; no logic here.
 - FFmpeg/ffprobe are Tauri **sidecars** — separate processes, never linked as libraries.
 - IPC event/command names are defined once in a shared constants file mirrored TS↔Rust; never inline string literals.

@@ -1,12 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import {
+  CMD_CANCEL_ALL,
   CMD_CANCEL_JOB,
-  CMD_CONVERT_FILE,
+  CMD_ENQUEUE_JOBS,
+  CMD_GENERATE_THUMBNAIL,
   CMD_PROBE_FILE,
+  CMD_SET_CONCURRENCY,
   EVT_JOB_CANCELLED,
   EVT_JOB_DONE,
   EVT_JOB_ERROR,
+  EVT_JOB_STARTED,
   EVT_PROGRESS,
 } from "./constants";
 import type { OutputFormat, VideoPreset } from "./presets";
@@ -18,6 +22,12 @@ export interface JobSettings {
   video_preset: VideoPreset;
   trim_start: number | null;
   trim_end: number | null;
+}
+
+export interface EnqueueJob {
+  job_id: string;
+  settings: JobSettings;
+  duration_us: number | null;
 }
 
 export interface MediaInfo {
@@ -38,7 +48,7 @@ export interface ProgressPayload {
   speed: number | null;
 }
 
-export interface JobDonePayload {
+export interface JobEventPayload {
   job_id: string;
 }
 
@@ -47,24 +57,31 @@ export interface JobErrorPayload {
   message: string;
 }
 
-export interface JobCancelledPayload {
-  job_id: string;
-}
-
 export function probeFile(path: string): Promise<MediaInfo> {
   return invoke<MediaInfo>(CMD_PROBE_FILE, { path });
 }
 
-export function convertFile(
-  settings: JobSettings,
-  jobId: string,
-  durationUs: number | null
-): Promise<void> {
-  return invoke<void>(CMD_CONVERT_FILE, {
-    settings,
-    jobId,
-    durationUs,
-  });
+export function enqueueJobs(jobs: EnqueueJob[]): Promise<void> {
+  return invoke<void>(CMD_ENQUEUE_JOBS, { jobs });
+}
+
+export function cancelJob(jobId: string): Promise<void> {
+  return invoke<void>(CMD_CANCEL_JOB, { jobId });
+}
+
+export function cancelAll(): Promise<void> {
+  return invoke<void>(CMD_CANCEL_ALL);
+}
+
+export function setConcurrency(n: number): Promise<void> {
+  return invoke<void>(CMD_SET_CONCURRENCY, { n });
+}
+
+export function generateThumbnail(
+  path: string,
+  durationS: number | null
+): Promise<string> {
+  return invoke<string>(CMD_GENERATE_THUMBNAIL, { path, durationS });
 }
 
 export function onProgress(
@@ -73,10 +90,16 @@ export function onProgress(
   return listen<ProgressPayload>(EVT_PROGRESS, (e) => cb(e.payload));
 }
 
-export function onJobDone(
-  cb: (payload: JobDonePayload) => void
+export function onJobStarted(
+  cb: (payload: JobEventPayload) => void
 ): Promise<UnlistenFn> {
-  return listen<JobDonePayload>(EVT_JOB_DONE, (e) => cb(e.payload));
+  return listen<JobEventPayload>(EVT_JOB_STARTED, (e) => cb(e.payload));
+}
+
+export function onJobDone(
+  cb: (payload: JobEventPayload) => void
+): Promise<UnlistenFn> {
+  return listen<JobEventPayload>(EVT_JOB_DONE, (e) => cb(e.payload));
 }
 
 export function onJobError(
@@ -86,11 +109,7 @@ export function onJobError(
 }
 
 export function onJobCancelled(
-  cb: (payload: JobCancelledPayload) => void
+  cb: (payload: JobEventPayload) => void
 ): Promise<UnlistenFn> {
-  return listen<JobCancelledPayload>(EVT_JOB_CANCELLED, (e) => cb(e.payload));
-}
-
-export function cancelJob(jobId: string): Promise<void> {
-  return invoke<void>(CMD_CANCEL_JOB, { jobId });
+  return listen<JobEventPayload>(EVT_JOB_CANCELLED, (e) => cb(e.payload));
 }

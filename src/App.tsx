@@ -1,97 +1,72 @@
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
-import { cancelJob, convertFile, onJobCancelled, onJobDone, onJobError, onProgress, probeFile } from "./lib/ipc";
-import type { MediaInfo } from "./lib/ipc";
+import {
+  cancelAll,
+  enqueueJobs,
+  generateThumbnail,
+  onJobCancelled,
+  onJobDone,
+  onJobError,
+  onJobStarted,
+  onProgress,
+  probeFile,
+  setConcurrency as ipcSetConcurrency,
+} from "./lib/ipc";
 import { deriveOutputPath } from "./lib/paths";
 import { DEFAULT_FORMAT, DEFAULT_PRESET, OUTPUT_FORMATS, VIDEO_PRESETS } from "./lib/presets";
 import type { OutputFormat, VideoPreset } from "./lib/presets";
+import { loadSettings, saveSettings } from "./lib/settings";
 import { S } from "./lib/strings";
+import { FileRow } from "./components/FileRow";
+import type { FileEntry } from "./components/FileRow";
 import "./index.css";
 
-interface FileEntry {
-  id: string;
-  path: string;
-  name: string;
-  info: MediaInfo | null;
-  status: "pending" | "running" | "done" | "failed" | "cancelled";
-  percent: number;
-  error: string | null;
-}
-
-function formatDuration(s: number | null): string {
-  if (s == null) return "—";
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = Math.floor(s % 60);
-  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-  return `${m}:${String(sec).padStart(2, "0")}`;
-}
-
-function formatSize(bytes: number | null): string {
-  if (bytes == null) return "";
-  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
-  return `${(bytes / 1e6).toFixed(0)} MB`;
-}
-
 let jobSeq = 0;
-function nextId() {
-  return `job-${++jobSeq}-${Date.now()}`;
-}
+const nextId = () => `job-${++jobSeq}-${Date.now()}`;
 
 export default function App() {
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [format, setFormat] = useState<OutputFormat>(DEFAULT_FORMAT);
   const [preset, setPreset] = useState<VideoPreset>(DEFAULT_PRESET);
-  const [converting, setConverting] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
+  const [concurrency, setConcurrency] = useState(2);
   const [outputDir, setOutputDir] = useState<string | null>(null);
-  const unlisteners = useRef<Array<() => void>>([]);
-  const cancelRequested = useRef(false);
-  const runningJobId = useRef<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const settingsLoaded = useRef(false);
+
+  const updateFile = (id: string, patch: Partial<FileEntry>) => {
+    setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)));
+  };
 
   useEffect(() => {
-    const setup = async () => {
-      const unlisten = [
-        await onProgress((p) => {
-          setFiles((prev) =>
-            prev.map((f) =>
-              f.id === p.job_id ? { ...f, percent: p.percent, status: "running" } : f
-            )
-          );
-        }),
-        await onJobDone((p) => {
-          setFiles((prev) =>
-            prev.map((f) => (f.id === p.job_id ? { ...f, status: "done", percent: 100 } : f))
-          );
-        }),
-        await onJobError((p) => {
-          setFiles((prev) =>
-            prev.map((f) =>
-              f.id === p.job_id ? { ...f, status: "failed", error: p.message } : f
-            )
-          );
-        }),
-        await onJobCancelled((p) => {
-          setFiles((prev) =>
-            prev.map((f) => (f.id === p.job_id ? { ...f, status: "cancelled" } : f))
-          );
-        }),
-      ];
-      unlisteners.current = unlisten;
-    };
-    setup();
+    const unlistenPromises = [
+      onProgress((p) => updateFile(p.job_id, { percent: p.percent, status: "running" })),
+      onJobStarted((p) => updateFile(p.job_id, { status: "running", percent: 0 })),
+      onJobDone((p) => updateFile(p.job_id, { status: "done", percent: 100 })),
+      onJobError((p) => updateFile(p.job_id, { status: "failed", error: p.message })),
+      onJobCancelled((p) => updateFile(p.job_id, { status: "cancelled" })),
+      // Tauri native file drop (not HTML5 DnD) — delivers real paths on all platforms
+      listen<{ paths: string[] }>("tauri://drag-drop", (e) => addPaths(e.payload.paths)),
+    ];
 
-    // Use Tauri native file drop (not HTML5 DnD) — delivers real file paths on all platforms
-    const unlistenDrop = listen<{ paths: string[] }>("tauri://drag-drop", async (e) => {
-      await addPaths(e.payload.paths);
+    loadSettings().then((s) => {
+      setFormat(s.format);
+      setPreset(s.preset);
+      setOutputDir(s.outputDir);
+      setConcurrency(s.concurrency);
+      ipcSetConcurrency(s.concurrency);
+      settingsLoaded.current = true;
     });
 
     return () => {
-      unlisteners.current.forEach((u) => u());
-      unlistenDrop.then((u) => u());
+      unlistenPromises.forEach((p) => p.then((u) => u()));
     };
   }, []);
+
+  useEffect(() => {
+    if (!settingsLoaded.current) return;
+    saveSettings({ format, preset, outputDir, concurrency });
+  }, [format, preset, outputDir, concurrency]);
 
   const addPaths = async (paths: string[]) => {
     for (const path of paths) {
@@ -102,19 +77,32 @@ export default function App() {
         path,
         name,
         info: null,
+        thumbnail: null,
         status: "pending",
         percent: 0,
         error: null,
       };
+      let duplicate = false;
       setFiles((prev) => {
-        if (prev.some((f) => f.path === path)) return prev;
+        if (prev.some((f) => f.path === path && f.status === "pending")) {
+          duplicate = true;
+          return prev;
+        }
         return [...prev, entry];
       });
+      if (duplicate) continue;
+
       try {
         const info = await probeFile(path);
-        setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, info } : f)));
+        updateFile(id, { info });
+        try {
+          const thumbnail = await generateThumbnail(path, info.duration_s);
+          updateFile(id, { thumbnail });
+        } catch {
+          // audio-only or no frame — placeholder icon stays
+        }
       } catch {
-        // probe failed — still allow the file to queue
+        // probe failed — still allow the file to queue; conversion will surface the error
       }
     }
   };
@@ -125,54 +113,23 @@ export default function App() {
     await addPaths(Array.isArray(selected) ? selected : [selected]);
   };
 
-  const handleRemove = (id: string) => {
-    setFiles((prev) => prev.filter((f) => f.id !== id));
-  };
-
   const handleConvert = async () => {
-    setConverting(true);
-    cancelRequested.current = false;
     const fmt = OUTPUT_FORMATS.find((f) => f.id === format)!;
-
-    for (const file of files) {
-      if (cancelRequested.current) break;
-      if (file.status !== "pending") continue;
-      const outputPath = deriveOutputPath(file.path, outputDir, fmt.extension);
-
-      runningJobId.current = file.id;
-      try {
-        await convertFile(
-          {
-            input_path: file.path,
-            output_path: outputPath,
-            format,
-            video_preset: preset,
-            trim_start: null,
-            trim_end: null,
-          },
-          file.id,
-          file.info?.duration_us ?? null
-        );
-      } catch {
-        // error handled via job_error event
-      } finally {
-        runningJobId.current = null;
-      }
-    }
-
-    setConverting(false);
-  };
-
-  const handleCancel = async () => {
-    cancelRequested.current = true;
-    const jobId = runningJobId.current;
-    if (jobId) {
-      try {
-        await cancelJob(jobId);
-      } catch {
-        // job may have already finished
-      }
-    }
+    const pending = files.filter((f) => f.status === "pending");
+    await enqueueJobs(
+      pending.map((file) => ({
+        job_id: file.id,
+        settings: {
+          input_path: file.path,
+          output_path: deriveOutputPath(file.path, outputDir, fmt.extension),
+          format,
+          video_preset: preset,
+          trim_start: null,
+          trim_end: null,
+        },
+        duration_us: file.info?.duration_us ?? null,
+      }))
+    );
   };
 
   const handleChooseFolder = async () => {
@@ -180,9 +137,15 @@ export default function App() {
     if (typeof selected === "string") setOutputDir(selected);
   };
 
+  const handleConcurrency = (n: number) => {
+    setConcurrency(n);
+    ipcSetConcurrency(n);
+  };
+
   const pendingCount = files.filter((f) => f.status === "pending").length;
-  const runningCount = files.filter((f) => f.status === "running").length;
+  const activeCount = files.filter((f) => f.status === "running").length;
   const doneCount = files.filter((f) => f.status === "done").length;
+  const converting = activeCount > 0;
   const overallPct =
     files.length > 0
       ? Math.round(
@@ -193,7 +156,7 @@ export default function App() {
 
   return (
     <div
-      className="flex flex-col h-screen bg-zinc-950 text-zinc-100 select-none"
+      className="flex flex-col h-screen bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 select-none"
       onDragOver={(e) => {
         e.preventDefault();
         setIsDragOver(true);
@@ -204,22 +167,14 @@ export default function App() {
         setIsDragOver(false);
       }}
     >
-      {/* File list / drop zone */}
       <div
         className={`flex-1 overflow-y-auto p-4 transition-colors ${
-          isDragOver ? "bg-blue-900/20 border-2 border-dashed border-blue-500" : ""
+          isDragOver ? "bg-blue-100 dark:bg-blue-900/20 border-2 border-dashed border-blue-500" : ""
         }`}
       >
         {files.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center gap-3 text-zinc-500">
-            <svg
-              width="64"
-              height="64"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1"
-            >
+          <div className="h-full flex flex-col items-center justify-center gap-3 text-zinc-400 dark:text-zinc-500">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="17 8 12 3 7 8" />
               <line x1="12" y1="3" x2="12" y2="15" />
@@ -230,103 +185,29 @@ export default function App() {
         ) : (
           <ul className="space-y-2">
             {files.map((f) => (
-              <li key={f.id} className="bg-zinc-900 rounded-lg p-3 flex items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate font-medium text-sm">{f.name}</span>
-                    {f.info && (
-                      <span className="text-xs text-zinc-500 shrink-0">
-                        {f.info.width && f.info.height
-                          ? `${f.info.width}×${f.info.height} · `
-                          : ""}
-                        {formatDuration(f.info.duration_s)}
-                        {f.info.size_bytes ? ` · ${formatSize(f.info.size_bytes)}` : ""}
-                      </span>
-                    )}
-                  </div>
-                  {(f.status === "running" || f.status === "done") && (
-                    <div className="mt-1 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${
-                          f.status === "done" ? "bg-green-500" : "bg-blue-500"
-                        }`}
-                        style={{ width: `${f.percent}%` }}
-                      />
-                    </div>
-                  )}
-                  {f.status === "failed" && (
-                    <p className="text-xs text-red-400 mt-1 truncate">
-                      {f.error ?? "Conversion failed"}
-                    </p>
-                  )}
-                </div>
-                <span
-                  className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${
-                    f.status === "done"
-                      ? "bg-green-900 text-green-300"
-                      : f.status === "failed"
-                      ? "bg-red-900 text-red-300"
-                      : f.status === "running"
-                      ? "bg-blue-900 text-blue-300"
-                      : "bg-zinc-800 text-zinc-400"
-                  }`}
-                >
-                  {f.status === "running" ? `${Math.round(f.percent)}%` : f.status}
-                </span>
-                {f.status === "pending" && (
-                  <button
-                    onClick={() => handleRemove(f.id)}
-                    className="text-zinc-600 hover:text-zinc-300 shrink-0"
-                    aria-label="Remove"
-                  >
-                    ✕
-                  </button>
-                )}
-              </li>
+              <FileRow key={f.id} file={f} onRemove={(id) => setFiles((prev) => prev.filter((x) => x.id !== id))} />
             ))}
           </ul>
         )}
       </div>
 
-      {/* Controls bar */}
-      <div className="border-t border-zinc-800 p-4 space-y-3">
+      <div className="border-t border-zinc-300 dark:border-zinc-800 p-4 space-y-3">
         <div className="flex gap-3 flex-wrap items-center">
+          <Selector label={S.outputFormat} value={format} disabled={converting}
+            options={OUTPUT_FORMATS.map((f) => [f.id, f.label])}
+            onChange={(v) => setFormat(v as OutputFormat)} />
+          <Selector label={S.quality} value={preset} disabled={converting}
+            options={VIDEO_PRESETS.map((p) => [p.id, p.label])}
+            onChange={(v) => setPreset(v as VideoPreset)} />
+          <Selector label={S.parallel} value={String(concurrency)} disabled={converting}
+            options={[["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"]]}
+            onChange={(v) => handleConcurrency(Number(v))} />
           <div className="flex items-center gap-2">
-            <label className="text-xs text-zinc-400">{S.outputFormat}</label>
-            <select
-              className="bg-zinc-800 text-sm rounded px-2 py-1 border border-zinc-700"
-              value={format}
-              onChange={(e) => setFormat(e.target.value as OutputFormat)}
-              disabled={converting}
-            >
-              {OUTPUT_FORMATS.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-zinc-400">{S.quality}</label>
-            <select
-              className="bg-zinc-800 text-sm rounded px-2 py-1 border border-zinc-700"
-              value={preset}
-              onChange={(e) => setPreset(e.target.value as VideoPreset)}
-              disabled={converting}
-            >
-              {VIDEO_PRESETS.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-zinc-400">{S.saveTo}</label>
+            <label className="text-xs text-zinc-500 dark:text-zinc-400">{S.saveTo}</label>
             <button
               onClick={handleChooseFolder}
               disabled={converting}
-              className="text-sm px-2 py-1 bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700 disabled:opacity-50 max-w-48 truncate"
+              className="text-sm px-2 py-1 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 rounded border border-zinc-300 dark:border-zinc-700 disabled:opacity-50 max-w-48 truncate"
               title={outputDir ?? S.sameFolderAsSource}
             >
               {outputDir ? outputDir.split("/").pop() : S.sameFolderAsSource}
@@ -335,7 +216,7 @@ export default function App() {
               <button
                 onClick={() => setOutputDir(null)}
                 disabled={converting}
-                className="text-zinc-600 hover:text-zinc-300 text-xs"
+                className="text-zinc-400 hover:text-zinc-700 dark:text-zinc-600 dark:hover:text-zinc-300 text-xs"
                 aria-label="Reset to same folder as source"
               >
                 ✕
@@ -344,40 +225,34 @@ export default function App() {
           </div>
           <button
             onClick={handleAddFiles}
-            disabled={converting}
-            className="ml-auto text-sm px-3 py-1 bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700 disabled:opacity-50"
+            className="ml-auto text-sm px-3 py-1 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 rounded border border-zinc-300 dark:border-zinc-700"
           >
             {S.addFiles}
           </button>
-          {files.length > 0 && (
+          {files.length > 0 && !converting && (
             <button
               onClick={() => setFiles([])}
-              disabled={converting}
-              className="text-sm px-3 py-1 bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700 disabled:opacity-50"
+              className="text-sm px-3 py-1 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 rounded border border-zinc-300 dark:border-zinc-700"
             >
               {S.clearAll}
             </button>
           )}
         </div>
 
-        {/* Progress + Convert button */}
         <div className="flex items-center gap-3">
-          {(converting || runningCount > 0) && (
+          {converting && (
             <div className="flex-1">
-              <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-blue-500 rounded-full transition-all"
-                  style={{ width: `${overallPct}%` }}
-                />
+              <div className="h-2 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
+                <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${overallPct}%` }} />
               </div>
-              <p className="text-xs text-zinc-400 mt-1">
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
                 {S.converting(doneCount, files.length, overallPct)}
               </p>
             </div>
           )}
           {converting ? (
             <button
-              onClick={handleCancel}
+              onClick={() => cancelAll()}
               className="ml-auto px-6 py-2 bg-red-700 hover:bg-red-600 text-white rounded-lg font-medium transition-colors"
             >
               {S.cancel}
@@ -393,6 +268,36 @@ export default function App() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function Selector({
+  label,
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: [string, string][];
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <label className="text-xs text-zinc-500 dark:text-zinc-400">{label}</label>
+      <select
+        className="bg-white dark:bg-zinc-800 text-sm rounded px-2 py-1 border border-zinc-300 dark:border-zinc-700"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+      >
+        {options.map(([id, text]) => (
+          <option key={id} value={id}>{text}</option>
+        ))}
+      </select>
     </div>
   );
 }

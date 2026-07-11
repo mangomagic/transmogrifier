@@ -144,6 +144,61 @@ fn mkv_to_mp4_converts() {
     assert_eq!(info.audio_codec.as_deref(), Some("aac"));
 }
 
+/// M2 exit criterion at the process level: a batch of 5 mixed files with
+/// 2-way concurrency completes; the corrupt file fails without affecting
+/// the other four.
+#[test]
+fn batch_of_five_with_one_corrupt_completes() {
+    let fixtures = ensure_fixtures();
+    let inputs = [
+        ("sample.mov", true),
+        ("sample.avi", true),
+        ("corrupt.mov", false),
+        ("sample.mkv", true),
+        ("vfr.mkv", true),
+    ];
+
+    let handles: Vec<_> = inputs
+        .iter()
+        .enumerate()
+        .map(|(i, (name, _))| {
+            let input = fixtures.join(name).to_string_lossy().into_owned();
+            let output = out_path(&format!("transcodo_it_batch_{i} (converted).mp4"));
+            std::thread::spawn(move || {
+                let settings = JobSettings {
+                    input_path: input,
+                    output_path: output.clone(),
+                    format: OutputFormat::Mp4,
+                    video_preset: VideoPreset::SmallFile,
+                    trim_start: None,
+                    trim_end: None,
+                };
+                let status = Command::new(sidecar("ffmpeg"))
+                    .args(&build_args(&settings))
+                    .output()
+                    .expect("spawn ffmpeg")
+                    .status;
+                (status.success(), output)
+            })
+        })
+        .collect();
+
+    let results: Vec<(bool, String)> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+
+    for (i, (_, expect_ok)) in inputs.iter().enumerate() {
+        let (ok, output) = &results[i];
+        assert_eq!(ok, expect_ok, "job {i} unexpected outcome");
+        if *expect_ok {
+            let probe_out = Command::new(sidecar("ffprobe"))
+                .args(["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", output])
+                .output()
+                .expect("spawn ffprobe");
+            let info = parse_probe(&String::from_utf8(probe_out.stdout).unwrap()).unwrap();
+            assert_eq!(info.video_codec.as_deref(), Some("h264"), "job {i} bad codec");
+        }
+    }
+}
+
 #[test]
 fn corrupt_input_fails_cleanly() {
     let fixtures = ensure_fixtures();

@@ -1,19 +1,22 @@
-use crate::ffmpeg_args::{build_args, JobSettings};
-use crate::ipc_constants::{EVT_JOB_CANCELLED, EVT_JOB_DONE, EVT_JOB_ERROR, EVT_PROGRESS};
+use crate::ffmpeg_args::JobSettings;
+use crate::ipc_constants::EVT_JOB_CANCELLED;
 use crate::probe::{parse_probe, MediaInfo};
-use crate::progress::parse_progress_block;
-use serde::Serialize;
+use crate::queue::{Job, JobStatus};
+use crate::scheduler::{pump, QueueState};
+use crate::thumbs::{thumb_cache_key, thumb_seek_seconds};
+use base64::Engine;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Runtime, State};
-use tauri_plugin_shell::process::{CommandChild, CommandEvent};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
+use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 
 /// Children of currently running ffmpeg processes, keyed by job id.
 #[derive(Default)]
 pub struct RunningJobs(pub Mutex<HashMap<String, CommandChild>>);
 
-/// Job ids cancelled by the user; lets convert_file distinguish a kill from a crash.
+/// Job ids cancelled by the user; lets the runner distinguish a kill from a crash.
 #[derive(Default)]
 pub struct CancelledJobs(pub Mutex<HashSet<String>>);
 
@@ -22,6 +25,11 @@ pub struct ProgressPayload {
     pub job_id: String,
     pub percent: f32,
     pub speed: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct JobStartedPayload {
+    pub job_id: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -40,86 +48,39 @@ pub struct JobCancelledPayload {
     pub job_id: String,
 }
 
-/// Convert a single file. Emits progress/done/error/cancelled events to the window.
-#[tauri::command]
-pub async fn convert_file<R: Runtime>(
-    app: AppHandle<R>,
-    running: State<'_, RunningJobs>,
-    cancelled: State<'_, CancelledJobs>,
-    settings: JobSettings,
-    job_id: String,
-    duration_us: Option<i64>,
-) -> Result<(), String> {
-    let args = build_args(&settings);
-
-    let (mut rx, child) = app
-        .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| e.to_string())?
-        .args(&args)
-        .spawn()
-        .map_err(|e| e.to_string())?;
-
-    running.0.lock().unwrap().insert(job_id.clone(), child);
-
-    let mut stdout_buf = String::new();
-    let mut stderr_buf = String::new();
-
-    while let Some(event) = rx.recv().await {
-        match event {
-            CommandEvent::Stdout(bytes) => {
-                let line = String::from_utf8_lossy(&bytes);
-                stdout_buf.push_str(&line);
-                // ffmpeg -progress emits blocks ending with progress=continue/end
-                if line.contains("progress=") {
-                    if let Some(ev) = parse_progress_block(&job_id, &stdout_buf, duration_us) {
-                        let _ = app.emit(
-                            EVT_PROGRESS,
-                            ProgressPayload {
-                                job_id: ev.job_id,
-                                percent: ev.percent,
-                                speed: ev.speed,
-                            },
-                        );
-                    }
-                    stdout_buf.clear();
-                }
-            }
-            CommandEvent::Stderr(bytes) => {
-                stderr_buf.push_str(&String::from_utf8_lossy(&bytes));
-            }
-            CommandEvent::Terminated(payload) => {
-                running.0.lock().unwrap().remove(&job_id);
-                let was_cancelled = cancelled.0.lock().unwrap().remove(&job_id);
-
-                if was_cancelled {
-                    // Remove the partial output file left behind by the kill
-                    let _ = std::fs::remove_file(&settings.output_path);
-                    let _ = app.emit(EVT_JOB_CANCELLED, JobCancelledPayload { job_id: job_id.clone() });
-                } else if payload.code == Some(0) {
-                    let _ = app.emit(EVT_JOB_DONE, JobDonePayload { job_id: job_id.clone() });
-                } else {
-                    let _ = app.emit(
-                        EVT_JOB_ERROR,
-                        JobErrorPayload {
-                            job_id: job_id.clone(),
-                            message: stderr_buf.clone(),
-                        },
-                    );
-                    return Err(stderr_buf);
-                }
-                break;
-            }
-            _ => {}
-        }
-    }
-
-    Ok(())
+#[derive(Debug, Deserialize)]
+pub struct EnqueueJob {
+    pub job_id: String,
+    pub settings: JobSettings,
+    pub duration_us: Option<i64>,
 }
 
-/// Kill the ffmpeg process for a running job. No-op if the job already finished.
+/// Add jobs to the queue and start converting up to the concurrency limit.
 #[tauri::command]
-pub async fn cancel_job(
+pub fn enqueue_jobs<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, QueueState>,
+    jobs: Vec<EnqueueJob>,
+) {
+    {
+        let mut queue = state.queue.lock().unwrap();
+        for j in jobs {
+            queue.push(Job::new(j.job_id, j.settings, j.duration_us));
+        }
+    }
+    pump(&app);
+}
+
+#[tauri::command]
+pub fn set_concurrency(state: State<'_, QueueState>, n: usize) {
+    state.set_concurrency(n);
+}
+
+/// Cancel one job: kill its process if running, or skip it if still queued.
+#[tauri::command]
+pub fn cancel_job<R: Runtime>(
+    app: AppHandle<R>,
+    queue_state: State<'_, QueueState>,
     running: State<'_, RunningJobs>,
     cancelled: State<'_, CancelledJobs>,
     job_id: String,
@@ -128,6 +89,42 @@ pub async fn cancel_job(
     if let Some(child) = child {
         cancelled.0.lock().unwrap().insert(job_id);
         child.kill().map_err(|e| e.to_string())?;
+    } else {
+        let mut queue = queue_state.queue.lock().unwrap();
+        if queue.get(&job_id).map(|j| j.status) == Some(JobStatus::Queued) {
+            queue.set_status(&job_id, JobStatus::Cancelled);
+            let _ = app.emit(EVT_JOB_CANCELLED, JobCancelledPayload { job_id });
+        }
+    }
+    Ok(())
+}
+
+/// Cancel everything: queued jobs are skipped, running processes killed.
+#[tauri::command]
+pub fn cancel_all<R: Runtime>(
+    app: AppHandle<R>,
+    queue_state: State<'_, QueueState>,
+    running: State<'_, RunningJobs>,
+    cancelled: State<'_, CancelledJobs>,
+) -> Result<(), String> {
+    {
+        let mut queue = queue_state.queue.lock().unwrap();
+        let queued_ids: Vec<String> = queue
+            .all()
+            .iter()
+            .filter(|j| j.status == JobStatus::Queued)
+            .map(|j| j.id.clone())
+            .collect();
+        for id in queued_ids {
+            queue.set_status(&id, JobStatus::Cancelled);
+            let _ = app.emit(EVT_JOB_CANCELLED, JobCancelledPayload { job_id: id });
+        }
+    }
+
+    let children: Vec<(String, CommandChild)> = running.0.lock().unwrap().drain().collect();
+    for (id, child) in children {
+        cancelled.0.lock().unwrap().insert(id);
+        let _ = child.kill();
     }
     Ok(())
 }
@@ -158,4 +155,62 @@ pub async fn probe_file<R: Runtime>(app: AppHandle<R>, path: String) -> Result<M
 
     let json = String::from_utf8(output.stdout).map_err(|e| e.to_string())?;
     parse_probe(&json).map_err(|e| e.to_string())
+}
+
+/// Generate (or fetch from cache) a small JPEG thumbnail; returns a data URL.
+/// Errors for audio-only files — the UI shows a placeholder icon instead.
+#[tauri::command]
+pub async fn generate_thumbnail<R: Runtime>(
+    app: AppHandle<R>,
+    path: String,
+    duration_s: Option<f64>,
+) -> Result<String, String> {
+    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    let mtime = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| e.to_string())?
+        .join("thumbs");
+    std::fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
+
+    let key = thumb_cache_key(&path, mtime, meta.len());
+    let thumb_path = cache_dir.join(format!("{key}.jpg"));
+
+    if !thumb_path.exists() {
+        let seek = format!("{:.3}", thumb_seek_seconds(duration_s));
+        let output = app
+            .shell()
+            .sidecar("ffmpeg")
+            .map_err(|e| e.to_string())?
+            .args([
+                "-y",
+                "-ss",
+                &seek,
+                "-i",
+                &path,
+                "-frames:v",
+                "1",
+                "-vf",
+                "scale=96:-1",
+                thumb_path.to_str().ok_or("invalid cache path")?,
+            ])
+            .output()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if !output.status.success() || !thumb_path.exists() {
+            return Err("no video frame available".into());
+        }
+    }
+
+    let bytes = std::fs::read(&thumb_path).map_err(|e| e.to_string())?;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+    Ok(format!("data:image/jpeg;base64,{b64}"))
 }

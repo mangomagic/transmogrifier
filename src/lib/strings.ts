@@ -19,4 +19,7 @@ export const S = {
   copyLog: "Copy log",
   suffix: " (converted)",
   audioExtractNote: "Audio will be extracted from video",
+  parallel: "Parallel",
+  copied: "Copied!",
+  showLog: "Show log",
 };

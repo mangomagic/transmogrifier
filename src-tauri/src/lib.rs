@@ -4,8 +4,15 @@ pub mod ipc_constants;
 pub mod probe;
 pub mod progress;
 pub mod queue;
+pub mod runner;
+pub mod scheduler;
+pub mod thumbs;
 
-use commands::{cancel_job, convert_file, probe_file, CancelledJobs, RunningJobs};
+use commands::{
+    cancel_all, cancel_job, enqueue_jobs, generate_thumbnail, probe_file, set_concurrency,
+    CancelledJobs, RunningJobs,
+};
+use scheduler::QueueState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -13,9 +20,18 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_store::Builder::new().build())
         .manage(RunningJobs::default())
         .manage(CancelledJobs::default())
-        .invoke_handler(tauri::generate_handler![convert_file, probe_file, cancel_job])
+        .manage(QueueState::default())
+        .invoke_handler(tauri::generate_handler![
+            enqueue_jobs,
+            probe_file,
+            cancel_job,
+            cancel_all,
+            set_concurrency,
+            generate_thumbnail
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
