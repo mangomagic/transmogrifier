@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
 import {
   cancelAll,
@@ -290,6 +291,12 @@ export default function App() {
             </svg>
             <p className="text-lg font-medium">{S.dropZoneHint}</p>
             <p className="text-sm">{S.dropZoneSub}</p>
+            <button
+              onClick={() => openUrl("https://ffmpeg.org").catch(() => {})}
+              className="text-xs text-zinc-400 dark:text-zinc-600 hover:underline mt-4"
+            >
+              {S.poweredByFfmpeg}
+            </button>
           </div>
         ) : (
           <ul className="space-y-2">

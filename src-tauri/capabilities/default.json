@@ -9,6 +9,11 @@
     "dialog:default",
     "store:default",
     "updater:default",
-    "process:default"
+    "process:default",
+    "log:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://ffmpeg.org/*" }, { "url": "https://www.ffmpeg.org/*" }]
+    }
   ]
 }

@@ -46,6 +46,14 @@ pub async fn run_job<R: Runtime>(app: &AppHandle<R>, job: &Job) -> JobStatus {
         .unwrap()
         .insert(job.id.clone(), child);
 
+    log::info!(
+        "job {} started: {} -> {} ({:?}{})",
+        job.id,
+        job.settings.input_path,
+        job.settings.output_path,
+        job.settings.format,
+        if job.settings.stream_copy { ", stream copy" } else { "" }
+    );
     let _ = app.emit(EVT_JOB_STARTED, JobStartedPayload { job_id: job.id.clone() });
 
     let mut stdout_buf = String::new();
@@ -93,6 +101,7 @@ pub async fn run_job<R: Runtime>(app: &AppHandle<R>, job: &Job) -> JobStatus {
                     .remove(&job.id);
 
                 if was_cancelled {
+                    log::warn!("job {} cancelled; removing partial output", job.id);
                     // Remove the partial output file left behind by the kill
                     let _ = std::fs::remove_file(&job.settings.output_path);
                     let _ = app.emit(
@@ -101,10 +110,17 @@ pub async fn run_job<R: Runtime>(app: &AppHandle<R>, job: &Job) -> JobStatus {
                     );
                     return JobStatus::Cancelled;
                 } else if payload.code == Some(0) {
+                    log::info!("job {} done: {}", job.id, job.settings.output_path);
                     let _ = app.emit(EVT_JOB_DONE, JobDonePayload { job_id: job.id.clone() });
                     return JobStatus::Done;
                 } else {
                     let message = stderr_tail(&stderr_buf);
+                    log::error!(
+                        "job {} failed (exit {:?}): {}",
+                        job.id,
+                        payload.code,
+                        message
+                    );
                     {
                         let state = app.state::<crate::scheduler::QueueState>();
                         let mut queue = state.queue.lock().unwrap();
@@ -127,6 +143,7 @@ pub async fn run_job<R: Runtime>(app: &AppHandle<R>, job: &Job) -> JobStatus {
     }
 
     // Channel closed without a Terminated event — treat as failure
+    log::error!("job {}: process channel closed without termination event", job.id);
     app.state::<RunningJobs>().0.lock().unwrap().remove(&job.id);
     JobStatus::Failed
 }

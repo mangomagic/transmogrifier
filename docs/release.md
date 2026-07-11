@@ -29,6 +29,14 @@ Cutting a release:
 git tag v0.2.0 && git push origin v0.2.0
 ```
 
+## Logs
+
+App + job logs land in the platform log dir (macOS:
+`~/Library/Logs/com.snowcrash.transmogrifier/Transmogrifier.log`), max 2 MB,
+rotated keeping one previous file. Job lifecycle (enqueue/start/done/failed
+with stderr tail), exit-with-active-jobs, and uncaught frontend errors are
+all captured — first stop when diagnosing a user report.
+
 ## Auto-updater
 
 - Wired via `tauri-plugin-updater`; public key is in `tauri.conf.json`,

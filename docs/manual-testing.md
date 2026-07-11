@@ -50,6 +50,9 @@ Generate test media first if needed: `./fixtures/gen_fixtures.sh`
 - ⬜ **GIF export** — format GIF + trim to ~1 s on `sample.mov`; output is an animated GIF that loops, reasonable colours (palette pass).
 - ⬜ **Resolution cap** — Advanced → 480; convert a 720p+ file; output height is ≤480 with aspect preserved. Small-file preset alone also caps at 720.
 
+- ⬜ **Log file** — after a batch with one failure, `~/Library/Logs/com.snowcrash.transmogrifier/Transmogrifier.log` contains enqueue/start/done lines and the failure with its stderr tail.
+- ⬜ **FFmpeg credit** — "Powered by FFmpeg" in the empty drop zone opens ffmpeg.org in the browser.
+
 ## Settings & appearance
 
 - ⬜ **Output folder** — choose a custom folder via "Save to"; output lands there. Reset (✕) returns to same-folder-as-source behaviour.

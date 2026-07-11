@@ -61,6 +61,7 @@ pub fn enqueue_jobs<R: Runtime>(
     state: State<'_, QueueState>,
     jobs: Vec<EnqueueJob>,
 ) {
+    log::info!("enqueueing {} job(s)", jobs.len());
     {
         let mut queue = state.queue.lock().unwrap();
         for j in jobs {

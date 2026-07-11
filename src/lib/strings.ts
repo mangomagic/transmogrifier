@@ -53,6 +53,7 @@ export const S = {
       : `${n} conversions are still in progress. Quit and cancel them? Partial output files will be removed.`,
   exitQuit: "Quit anyway",
   exitStay: "Keep converting",
+  poweredByFfmpeg: "Powered by FFmpeg",
   updateAvailable: (version: string) => `Update ${version} available`,
   updateInstall: "Restart & update",
   updateInstalling: "Updating…",

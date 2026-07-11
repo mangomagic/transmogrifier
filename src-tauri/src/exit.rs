@@ -38,6 +38,7 @@ pub fn confirm_exit<R: Runtime>(
     exit_confirmed: State<'_, ExitConfirmed>,
 ) {
     exit_confirmed.0.store(true, Ordering::Relaxed);
+    log::warn!("exit confirmed with active jobs; killing running conversions");
 
     let children: Vec<_> = running.0.lock().unwrap().drain().collect();
     for (id, child) in children {
