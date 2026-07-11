@@ -1,0 +1,22 @@
+export const S = {
+  appTitle: "Transcodo",
+  dropZoneHint: "Drop files here or click to add",
+  dropZoneSub: "Supports MOV, MP4, MKV, AVI, WMV, WebM, MP3, WAV, FLAC and more",
+  addFiles: "Add Files",
+  clearAll: "Clear All",
+  convert: "Convert",
+  cancel: "Cancel",
+  outputFormat: "Output format",
+  quality: "Quality",
+  saveTo: "Save to",
+  sameFolderAsSource: "Same folder as source",
+  chooseFolder: "Choose…",
+  converting: (done: number, total: number, pct: number) =>
+    `Converting ${done} of ${total} · ${pct}%`,
+  conversionDone: "Done",
+  conversionFailed: "Failed",
+  showInFinder: "Show in Finder",
+  copyLog: "Copy log",
+  suffix: " (converted)",
+  audioExtractNote: "Audio will be extracted from video",
+};
