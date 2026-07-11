@@ -39,7 +39,7 @@ fn sidecar(name: &str) -> PathBuf {
 /// Fixtures are gitignored; regenerate them if missing (requires ffmpeg on PATH).
 fn ensure_fixtures() -> PathBuf {
     let fixtures = repo_root().join("fixtures");
-    if !fixtures.join("sample.mov").exists() {
+    if !fixtures.join("sample.mov").exists() || !fixtures.join("keyframes.mp4").exists() {
         let status = Command::new("bash")
             .arg(fixtures.join("gen_fixtures.sh"))
             .status()
@@ -95,6 +95,7 @@ fn mov_to_mp4_produces_valid_h264_aac() {
         trim_start: None,
         trim_end: None,
         advanced: None,
+        stream_copy: false,
     };
 
     let info = convert_and_probe(&settings);
@@ -121,6 +122,7 @@ fn mov_to_mp3_extracts_audio() {
         trim_start: None,
         trim_end: None,
         advanced: None,
+        stream_copy: false,
     };
 
     let info = convert_and_probe(&settings);
@@ -142,6 +144,7 @@ fn mkv_to_mp4_converts() {
         trim_start: None,
         trim_end: None,
         advanced: None,
+        stream_copy: false,
     };
 
     let info = convert_and_probe(&settings);
@@ -179,6 +182,7 @@ fn batch_of_five_with_one_corrupt_completes() {
                     trim_start: None,
                     trim_end: None,
                     advanced: None,
+                    stream_copy: false,
                 };
                 let status = Command::new(sidecar("ffmpeg"))
                     .args(&build_args(&settings))
@@ -218,6 +222,7 @@ fn trimmed_output_duration_matches_request() {
         trim_start: Some(0.5),
         trim_end: Some(1.5),
         advanced: None,
+        stream_copy: false,
     };
 
     let info = convert_and_probe(&settings);
@@ -239,6 +244,7 @@ fn gif_export_with_trim() {
         trim_start: Some(0.0),
         trim_end: Some(1.0),
         advanced: None,
+        stream_copy: false,
     };
 
     let info = convert_and_probe(&settings);
@@ -260,6 +266,7 @@ fn advanced_resolution_cap_downscales() {
             max_height: Some(120),
             ..Default::default()
         }),
+        stream_copy: false,
     };
 
     let info = convert_and_probe(&settings);
@@ -293,6 +300,7 @@ fn videotoolbox_encode_works_when_available() {
             encoder: Some(VideoEncoder::H264VideoToolbox),
             ..Default::default()
         }),
+        stream_copy: false,
     };
 
     let info = convert_and_probe(&settings);
@@ -311,6 +319,7 @@ fn corrupt_input_fails_cleanly() {
         trim_start: None,
         trim_end: None,
         advanced: None,
+        stream_copy: false,
     };
 
     let args = build_args(&settings);
@@ -322,4 +331,31 @@ fn corrupt_input_fails_cleanly() {
         !output.status.success(),
         "ffmpeg should fail on a truncated input"
     );
+}
+
+/// Fast trim (stream copy) on a keyframe-dense clip: duration within
+/// keyframe-accuracy tolerance and codecs unchanged (no re-encode).
+#[test]
+fn stream_copy_trim_is_keyframe_accurate() {
+    let fixtures = ensure_fixtures();
+    let settings = JobSettings {
+        input_path: fixtures.join("keyframes.mp4").to_string_lossy().into_owned(),
+        output_path: out_path("transmogrifier_it_fasttrim (converted).mp4"),
+        format: OutputFormat::Mp4,
+        video_preset: VideoPreset::High,
+        trim_start: Some(1.0),
+        trim_end: Some(2.0),
+        advanced: None,
+        stream_copy: true,
+    };
+
+    let info = convert_and_probe(&settings);
+    let duration = info.duration_s.expect("output has duration");
+    assert!(
+        (duration - 1.0).abs() < 0.5,
+        "stream-copy trim duration {duration} not within keyframe tolerance of 1.0s"
+    );
+    // -c copy must preserve the source codecs
+    assert_eq!(info.video_codec.as_deref(), Some("h264"));
+    assert_eq!(info.audio_codec.as_deref(), Some("aac"));
 }

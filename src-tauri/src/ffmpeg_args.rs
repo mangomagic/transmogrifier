@@ -53,6 +53,11 @@ pub struct JobSettings {
     pub trim_end: Option<f64>,
     #[serde(default)]
     pub advanced: Option<AdvancedSettings>,
+    /// Fast trim: remux without re-encoding (`-c copy`). Keyframe-accurate
+    /// only. The UI enables this when the trim can survive a remux (see
+    /// src/lib/fasttrim.ts); honoured only for MP4/MKV/MOV outputs.
+    #[serde(default)]
+    pub stream_copy: bool,
 }
 
 pub fn build_args(settings: &JobSettings) -> Vec<String> {
@@ -72,12 +77,17 @@ pub fn build_args(settings: &JobSettings) -> Vec<String> {
 
     match settings.format {
         OutputFormat::Mp4 | OutputFormat::Mkv | OutputFormat::Mov => {
-            if let Some(vf) = video_filters(settings) {
-                args.extend(["-vf".into(), vf]);
+            if settings.stream_copy {
+                args.extend(["-c".into(), "copy".into()]);
+                args.extend(metadata_args(settings));
+            } else {
+                if let Some(vf) = video_filters(settings) {
+                    args.extend(["-vf".into(), vf]);
+                }
+                args.extend(video_codec_args(settings));
+                args.extend(audio_codec_args(settings));
+                args.extend(metadata_args(settings));
             }
-            args.extend(video_codec_args(settings));
-            args.extend(audio_codec_args(settings));
-            args.extend(metadata_args(settings));
             if settings.format == OutputFormat::Mp4 {
                 args.extend(["-movflags".into(), "+faststart".into()]);
             }

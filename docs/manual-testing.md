@@ -16,7 +16,7 @@ Generate test media first if needed: `./fixtures/gen_fixtures.sh`
 ## File input
 
 - ⬜ **Drag-and-drop** — drag 2–3 files from Finder onto the window. Rows appear with name, resolution, duration, size; drop-zone highlight shows during drag and clears after.
-- ⬜ **Folder drop** — drag a folder in. (v1 plan: expands recursively, media files only. Not yet implemented — currently the folder path itself is probed and likely errors silently.)
+- ⬜ **Folder drop** — drag a folder containing media + non-media files (and a nested subfolder) onto the window: only the media files appear as rows, including those from the subfolder; non-media files are skipped.
 - ⬜ **Add Files button** — native picker opens, multi-select works, picked files appear.
 - ⬜ **Duplicate handling** — add the same file twice; only one pending row exists.
 - ⬜ **Thumbnails** — video files show a real frame thumbnail; audio files (`fixtures/sample.mp3`) show the note placeholder icon.
@@ -36,6 +36,7 @@ Generate test media first if needed: `./fixtures/gen_fixtures.sh`
 - ⬜ **Trim panel** — on a pending video row, click ✂ Trim: a filmstrip of 6 frames with timestamps appears, plus Start/End fields. Enter `0:00.5` / `0:01.5` on `sample.mov`, convert; output is ~1 s (the trim badge on the row shows the range).
 - ⬜ **Trim validation** — end ≤ start, times past clip end, or garbage input show the inline error and don't commit.
 - ⬜ **Trim on audio file** — ✂ on `sample.mp3`: no filmstrip (audio has no frames), but Start/End fields still work.
+- ⬜ **Fast trim (stream copy)** — with defaults (MP4, High, advanced untouched), set a trim on `keyframes.mp4`: the trim badge turns ⚡ (tooltip explains keyframe snapping) and conversion is near-instant with codecs unchanged. Changing preset to Small file flips the badge back to ✂ (re-encode).
 - ⬜ **Advanced panel** — ⚙ Advanced (only for MP4/MKV/MOV): codec, resolution, FPS, CRF, audio kbps, hardware toggle, strip metadata. The FFmpeg flags footer updates live as options change.
 - ⬜ **Hardware encoding** — with "Hardware encoding" on (default), the flags footer shows `h264_videotoolbox`; unticking switches it to `libx264`. Convert a file each way; both outputs play.
 - ⬜ **H.265 output** — Advanced → codec H.265, convert `sample.mov` to MP4; output plays in QuickTime (hvc1 tag).
@@ -62,6 +63,4 @@ Requires the GitHub repo + secrets from `docs/release.md` first.
 ## Not yet implemented (don't test)
 
 - Per-file format overrides, "Show in Finder" link, dock badge progress
-- Fast trim via stream copy (all trims currently re-encode)
-- Folder drop with recursive expansion
 - Code signing / notarization (M5)

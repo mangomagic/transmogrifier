@@ -62,6 +62,7 @@ export function AdvancedPanel({
       trim_start: null,
       trim_end: null,
       advanced: buildAdvancedSettings(ui, hwAvailable),
+      stream_copy: false,
     })
       .then((args) => setFlags(args.join(" ")))
       .catch(() => setFlags(""));

@@ -178,3 +178,10 @@ pub async fn probe_hw_encoders<R: Runtime>(app: AppHandle<R>) -> Result<Vec<Stri
 pub fn preview_args(settings: JobSettings) -> Vec<String> {
     build_args(&settings)
 }
+
+/// Expand dropped paths: folders become their media files (recursive),
+/// plain files pass through; duplicates removed.
+#[tauri::command]
+pub fn expand_paths(paths: Vec<String>) -> Vec<String> {
+    crate::media_paths::expand_media_paths(paths)
+}

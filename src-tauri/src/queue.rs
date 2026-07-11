@@ -104,6 +104,7 @@ mod tests {
             trim_start: None,
             trim_end: None,
             advanced: None,
+            stream_copy: false,
         }
     }
 

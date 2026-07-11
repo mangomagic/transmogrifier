@@ -22,6 +22,7 @@ Run `npm run check` after every change. Do not consider a task complete while it
   - `ffmpeg_args.rs` — pure fn `JobSettings -> Vec<String>`. Most-tested file in the repo (golden tests in `tests/golden_args.rs`).
   - `codec_args.rs` — pure codec/filter/metadata arg helpers used by `build_args`.
   - `encoders.rs` — pure parser: `ffmpeg -encoders` output → available hardware encoders.
+  - `media_paths.rs` — dropped-path expansion: folders → recursive media-file walk, media-extension filter, dedupe.
   - `progress.rs` — pure fn: ffmpeg `-progress` output line → `ProgressEvent`.
   - `probe.rs` — ffprobe JSON → `MediaInfo`.
   - `queue.rs` — job state machine (`queued → running → done | failed | cancelled`); `claim_next()` is the scheduler's atomic claim step.
@@ -57,7 +58,7 @@ Run `npm run check` after every change. Do not consider a task complete while it
 - Parse progress from `-progress pipe:1` key=value output, not stderr scraping.
 - Probe hardware encoders at startup (`ffmpeg -encoders`); fall back to libx264/x265 silently if unavailable.
 - Selecting an audio output format for a video input means "extract audio" — label it as such in UI.
-- Fast trim = stream copy with `-ss/-to` (keyframe-accurate only); re-encode when precise cuts or format change require it.
+- Fast trim = stream copy (`-c copy`, keyframe-accurate only); used automatically only when trim is set, codecs fit the target container, preset is the default High, and the advanced panel is untouched (src/lib/fasttrim.ts decides). Everything else re-encodes.
 - Trim args: `-ss` goes **before** `-i` (fast seek, frame-accurate when re-encoding). That resets timestamps, so the end point must be `-t <duration>` (end − start), not `-to <end>`.
 - HEVC in MP4/MOV needs `-tag:v hvc1` or QuickTime/Apple players refuse the file.
 - VideoToolbox encoders have no CRF — use `-q:v` (1–100); presets map Highest/High/Medium/Small → 75/65/55/45. No `-preset` speed flag either.

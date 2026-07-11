@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import {
   cancelAll,
   enqueueJobs,
+  expandPaths,
   generateThumbnail,
   onJobCancelled,
   onJobDone,
@@ -16,6 +17,7 @@ import {
 } from "./lib/ipc";
 import { buildAdvancedSettings, DEFAULT_ADVANCED_UI } from "./lib/advanced";
 import type { AdvancedUi } from "./lib/advanced";
+import { canFastTrim } from "./lib/fasttrim";
 import { deriveOutputPath } from "./lib/paths";
 import { DEFAULT_FORMAT, DEFAULT_PRESET, OUTPUT_FORMATS } from "./lib/presets";
 import type { OutputFormat, VideoPreset } from "./lib/presets";
@@ -79,7 +81,14 @@ export default function App() {
     saveSettings({ format, preset, outputDir, concurrency });
   }, [format, preset, outputDir, concurrency]);
 
-  const addPaths = async (paths: string[]) => {
+  const addPaths = async (rawPaths: string[]) => {
+    // Folders expand recursively to their media files (backend walk)
+    let paths = rawPaths;
+    try {
+      paths = await expandPaths(rawPaths);
+    } catch {
+      // fall back to the raw list; non-files will fail at probe time
+    }
     for (const path of paths) {
       const name = path.split("/").pop() ?? path;
       const id = nextId();
@@ -145,19 +154,24 @@ export default function App() {
       ? buildAdvancedSettings(advancedUi, hwEncoders)
       : null;
     await enqueueJobs(
-      pending.map((file) => ({
-        job_id: file.id,
-        settings: {
-          input_path: file.path,
-          output_path: deriveOutputPath(file.path, outputDir, fmt.extension),
-          format,
-          video_preset: preset,
-          trim_start: file.trimStart,
-          trim_end: file.trimEnd,
-          advanced,
-        },
-        duration_us: effectiveDurationUs(file),
-      }))
+      pending.map((file) => {
+        const hasTrim = file.trimStart != null || file.trimEnd != null;
+        const streamCopy = hasTrim && canFastTrim(file.info, format, preset, advancedUi);
+        return {
+          job_id: file.id,
+          settings: {
+            input_path: file.path,
+            output_path: deriveOutputPath(file.path, outputDir, fmt.extension),
+            format,
+            video_preset: preset,
+            trim_start: file.trimStart,
+            trim_end: file.trimEnd,
+            advanced: streamCopy ? null : advanced,
+            stream_copy: streamCopy,
+          },
+          duration_us: effectiveDurationUs(file),
+        };
+      })
     );
   };
 
@@ -222,6 +236,7 @@ export default function App() {
               <FileRow
                 key={f.id}
                 file={f}
+                fastTrim={canFastTrim(f.info, format, preset, advancedUi)}
                 onRemove={(id) => setFiles((prev) => prev.filter((x) => x.id !== id))}
                 onTrimChange={handleTrimChange}
               />

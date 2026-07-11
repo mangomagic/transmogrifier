@@ -4,6 +4,7 @@ import {
   CMD_CANCEL_ALL,
   CMD_CANCEL_JOB,
   CMD_ENQUEUE_JOBS,
+  CMD_EXPAND_PATHS,
   CMD_GENERATE_FILMSTRIP,
   CMD_GENERATE_THUMBNAIL,
   CMD_PREVIEW_ARGS,
@@ -36,6 +37,7 @@ export interface JobSettings {
   trim_start: number | null;
   trim_end: number | null;
   advanced: AdvancedSettings | null;
+  stream_copy: boolean;
 }
 
 export interface EnqueueJob {
@@ -112,6 +114,10 @@ export function probeHwEncoders(): Promise<string[]> {
 
 export function previewArgs(settings: JobSettings): Promise<string[]> {
   return invoke<string[]>(CMD_PREVIEW_ARGS, { settings });
+}
+
+export function expandPaths(paths: string[]): Promise<string[]> {
+  return invoke<string[]>(CMD_EXPAND_PATHS, { paths });
 }
 
 export function onProgress(

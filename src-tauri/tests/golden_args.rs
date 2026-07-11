@@ -14,6 +14,7 @@ fn settings(format: OutputFormat, preset: VideoPreset) -> JobSettings {
         trim_start: None,
         trim_end: None,
         advanced: None,
+        stream_copy: false,
     }
 }
 
@@ -230,4 +231,50 @@ fn progress_args_precede_output() {
     assert_eq!(args[n - 4], "-progress");
     assert_eq!(args[n - 3], "pipe:1");
     assert_eq!(args[n - 2], "-nostats");
+}
+
+#[test]
+fn stream_copy_trim_golden() {
+    let mut s = settings(OutputFormat::Mp4, VideoPreset::High);
+    s.stream_copy = true;
+    s.trim_start = Some(1.0);
+    s.trim_end = Some(2.0);
+    let args = build_args(&s);
+    assert_eq!(
+        args,
+        vec![
+            "-y", "-ss", "1.000", "-i", "/in/clip.mov", "-t", "1.000",
+            "-c", "copy",
+            "-map_metadata", "0", "-map_chapters", "0",
+            "-movflags", "+faststart",
+            "-progress", "pipe:1", "-nostats",
+            "/out/clip.out",
+        ]
+    );
+}
+
+#[test]
+fn stream_copy_never_encodes() {
+    for format in [OutputFormat::Mp4, OutputFormat::Mkv, OutputFormat::Mov] {
+        let mut s = settings(format, VideoPreset::SmallFile);
+        s.stream_copy = true;
+        let args = build_args(&s);
+        assert!(args.windows(2).any(|w| w == ["-c", "copy"]));
+        assert!(!args.contains(&"-c:v".to_string()));
+        assert!(!args.contains(&"-crf".to_string()));
+        assert!(!args.contains(&"-vf".to_string()), "no filters under stream copy");
+    }
+}
+
+#[test]
+fn stream_copy_ignored_for_non_container_formats() {
+    for format in [OutputFormat::Gif, OutputFormat::Mp3, OutputFormat::WebM] {
+        let mut s = settings(format, VideoPreset::High);
+        s.stream_copy = true;
+        let args = build_args(&s);
+        assert!(
+            !args.windows(2).any(|w| w == ["-c", "copy"]),
+            "{format:?} must ignore stream_copy"
+        );
+    }
 }

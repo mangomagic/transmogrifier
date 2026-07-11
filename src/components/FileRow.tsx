@@ -55,10 +55,13 @@ function AudioPlaceholder() {
 
 export function FileRow({
   file,
+  fastTrim,
   onRemove,
   onTrimChange,
 }: {
   file: FileEntry;
+  /// True when a set trim will use stream copy (no re-encode)
+  fastTrim: boolean;
   onRemove: (id: string) => void;
   onTrimChange: (id: string, trim: TrimValue) => void;
 }) {
@@ -68,7 +71,7 @@ export function FileRow({
 
   const hasTrim = file.trimStart != null || file.trimEnd != null;
   const trimLabel = hasTrim
-    ? `✂ ${formatTime(file.trimStart ?? 0)}–${
+    ? `${fastTrim ? "⚡" : "✂"} ${formatTime(file.trimStart ?? 0)}–${
         file.trimEnd != null ? formatTime(file.trimEnd) : "end"
       }`
     : `✂ ${S.trim}`;
@@ -115,6 +118,7 @@ export function FileRow({
         {file.status === "pending" && file.info?.duration_s != null && (
           <button
             onClick={() => setTrimOpen(!trimOpen)}
+            title={hasTrim && fastTrim ? S.fastTrimHint : undefined}
             className={`text-xs px-2 py-0.5 rounded shrink-0 border ${
               hasTrim
                 ? "border-blue-400 text-blue-600 dark:text-blue-400"
