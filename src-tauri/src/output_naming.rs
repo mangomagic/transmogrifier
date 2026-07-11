@@ -31,6 +31,13 @@ fn candidate_name(base: &str, extension: &str, attempt: usize) -> String {
     }
 }
 
+/// Collision key: case-insensitive AND separator-insensitive. Windows
+/// Path::join yields `\` while inputs may arrive with `/` — both spellings
+/// name the same file, so they must collide.
+fn collision_key(path: &str) -> String {
+    path.to_lowercase().replace('\\', "/")
+}
+
 pub fn resolve_outputs(
     reqs: &[NamingRequest],
     avoid_existing: bool,
@@ -38,7 +45,8 @@ pub fn resolve_outputs(
 ) -> Vec<ResolvedOutput> {
     // Case-insensitive: macOS/Windows filesystems are; on Linux this is
     // merely conservative (an extra suffix, never a wrong overwrite).
-    let mut reserved: HashSet<String> = reqs.iter().map(|r| r.input_path.to_lowercase()).collect();
+    let mut reserved: HashSet<String> =
+        reqs.iter().map(|r| collision_key(&r.input_path)).collect();
 
     reqs.iter()
         .map(|req| {
@@ -59,7 +67,7 @@ pub fn resolve_outputs(
             let path = loop {
                 let name = candidate_name(&base, &req.extension, attempt);
                 let candidate = Path::new(&dir).join(&name).to_string_lossy().into_owned();
-                let clash_reserved = reserved.contains(&candidate.to_lowercase());
+                let clash_reserved = reserved.contains(&collision_key(&candidate));
                 let clash_disk = avoid_existing && exists(&candidate);
                 if !clash_reserved && !clash_disk {
                     break candidate;
@@ -67,7 +75,7 @@ pub fn resolve_outputs(
                 attempt += 1;
             };
 
-            reserved.insert(path.to_lowercase());
+            reserved.insert(collision_key(&path));
             let on_disk = exists(&path);
             ResolvedOutput { path, exists: on_disk }
         })
@@ -157,6 +165,14 @@ mod tests {
     fn output_dir_overrides_source_folder() {
         let out = resolve_outputs(&[req("/m/clip.mov", Some("/elsewhere"), "mp4")], false, no_disk);
         assert_eq!(norm(&out[0].path), "/elsewhere/clip.mp4");
+    }
+
+    #[test]
+    fn collision_keys_ignore_separator_and_case() {
+        // Windows regression: Path::join yields `\` while the source input
+        // used `/`; both spell the same file and must collide, or the clean
+        // candidate would BE the source (data loss on Overwrite).
+        assert_eq!(collision_key("/m\\Clip.MP4"), collision_key("/m/clip.mp4"));
     }
 
     #[test]
