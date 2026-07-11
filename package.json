@@ -10,7 +10,7 @@
     "tauri": "tauri",
     "test": "vitest run",
     "lint": "eslint src --ext ts,tsx",
-    "check": "tsc --noEmit && npm run lint && npm run test && cargo test --manifest-path src-tauri/Cargo.toml"
+    "check": "tsc --noEmit && npm run lint && npm run test && cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

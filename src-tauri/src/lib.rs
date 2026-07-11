@@ -1,9 +1,9 @@
-mod commands;
-mod ffmpeg_args;
-mod ipc_constants;
-mod probe;
-mod progress;
-mod queue;
+pub mod commands;
+pub mod ffmpeg_args;
+pub mod ipc_constants;
+pub mod probe;
+pub mod progress;
+pub mod queue;
 
 use commands::{convert_file, probe_file};
 
