@@ -11,15 +11,19 @@ import {
   onJobStarted,
   onProgress,
   probeFile,
+  probeHwEncoders,
   setConcurrency as ipcSetConcurrency,
 } from "./lib/ipc";
+import { buildAdvancedSettings, DEFAULT_ADVANCED_UI } from "./lib/advanced";
+import type { AdvancedUi } from "./lib/advanced";
 import { deriveOutputPath } from "./lib/paths";
-import { DEFAULT_FORMAT, DEFAULT_PRESET, OUTPUT_FORMATS, VIDEO_PRESETS } from "./lib/presets";
+import { DEFAULT_FORMAT, DEFAULT_PRESET, OUTPUT_FORMATS } from "./lib/presets";
 import type { OutputFormat, VideoPreset } from "./lib/presets";
 import { loadSettings, saveSettings } from "./lib/settings";
 import { S } from "./lib/strings";
 import { FileRow } from "./components/FileRow";
 import type { FileEntry } from "./components/FileRow";
+import { ControlsBar } from "./components/ControlsBar";
 import "./index.css";
 
 let jobSeq = 0;
@@ -32,6 +36,9 @@ export default function App() {
   const [concurrency, setConcurrency] = useState(2);
   const [outputDir, setOutputDir] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [advancedUi, setAdvancedUi] = useState<AdvancedUi>(DEFAULT_ADVANCED_UI);
+  const [hwEncoders, setHwEncoders] = useState<string[]>([]);
   const settingsLoaded = useRef(false);
 
   const updateFile = (id: string, patch: Partial<FileEntry>) => {
@@ -58,6 +65,9 @@ export default function App() {
       settingsLoaded.current = true;
     });
 
+    // Probe hardware encoders once; fall back to software silently if empty
+    probeHwEncoders().then(setHwEncoders).catch(() => setHwEncoders([]));
+
     return () => {
       unlistenPromises.forEach((p) => p.then((u) => u()));
     };
@@ -81,6 +91,8 @@ export default function App() {
         status: "pending",
         percent: 0,
         error: null,
+        trimStart: null,
+        trimEnd: null,
       };
       let duplicate = false;
       setFiles((prev) => {
@@ -113,9 +125,24 @@ export default function App() {
     await addPaths(Array.isArray(selected) ? selected : [selected]);
   };
 
+  // Progress percent is measured against the output length, so trims
+  // shorten the reference duration.
+  const effectiveDurationUs = (f: FileEntry): number | null => {
+    const durS = f.info?.duration_s;
+    if (durS == null) return null;
+    const start = f.trimStart ?? 0;
+    const end = f.trimEnd ?? durS;
+    const us = Math.round(Math.max(0, end - start) * 1e6);
+    return us > 0 ? us : null;
+  };
+
   const handleConvert = async () => {
     const fmt = OUTPUT_FORMATS.find((f) => f.id === format)!;
     const pending = files.filter((f) => f.status === "pending");
+    // Advanced settings only shape video-container outputs
+    const advanced = ["Mp4", "Mkv", "Mov"].includes(format)
+      ? buildAdvancedSettings(advancedUi, hwEncoders)
+      : null;
     await enqueueJobs(
       pending.map((file) => ({
         job_id: file.id,
@@ -124,12 +151,17 @@ export default function App() {
           output_path: deriveOutputPath(file.path, outputDir, fmt.extension),
           format,
           video_preset: preset,
-          trim_start: null,
-          trim_end: null,
+          trim_start: file.trimStart,
+          trim_end: file.trimEnd,
+          advanced,
         },
-        duration_us: file.info?.duration_us ?? null,
+        duration_us: effectiveDurationUs(file),
       }))
     );
+  };
+
+  const handleTrimChange = (id: string, trim: { start: number | null; end: number | null }) => {
+    updateFile(id, { trimStart: trim.start, trimEnd: trim.end });
   };
 
   const handleChooseFolder = async () => {
@@ -185,119 +217,46 @@ export default function App() {
         ) : (
           <ul className="space-y-2">
             {files.map((f) => (
-              <FileRow key={f.id} file={f} onRemove={(id) => setFiles((prev) => prev.filter((x) => x.id !== id))} />
+              <FileRow
+                key={f.id}
+                file={f}
+                onRemove={(id) => setFiles((prev) => prev.filter((x) => x.id !== id))}
+                onTrimChange={handleTrimChange}
+              />
             ))}
           </ul>
         )}
       </div>
 
-      <div className="border-t border-zinc-300 dark:border-zinc-800 p-4 space-y-3">
-        <div className="flex gap-3 flex-wrap items-center">
-          <Selector label={S.outputFormat} value={format} disabled={converting}
-            options={OUTPUT_FORMATS.map((f) => [f.id, f.label])}
-            onChange={(v) => setFormat(v as OutputFormat)} />
-          <Selector label={S.quality} value={preset} disabled={converting}
-            options={VIDEO_PRESETS.map((p) => [p.id, p.label])}
-            onChange={(v) => setPreset(v as VideoPreset)} />
-          <Selector label={S.parallel} value={String(concurrency)} disabled={converting}
-            options={[["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"]]}
-            onChange={(v) => handleConcurrency(Number(v))} />
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-zinc-500 dark:text-zinc-400">{S.saveTo}</label>
-            <button
-              onClick={handleChooseFolder}
-              disabled={converting}
-              className="text-sm px-2 py-1 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 rounded border border-zinc-300 dark:border-zinc-700 disabled:opacity-50 max-w-48 truncate"
-              title={outputDir ?? S.sameFolderAsSource}
-            >
-              {outputDir ? outputDir.split("/").pop() : S.sameFolderAsSource}
-            </button>
-            {outputDir && (
-              <button
-                onClick={() => setOutputDir(null)}
-                disabled={converting}
-                className="text-zinc-400 hover:text-zinc-700 dark:text-zinc-600 dark:hover:text-zinc-300 text-xs"
-                aria-label="Reset to same folder as source"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-          <button
-            onClick={handleAddFiles}
-            className="ml-auto text-sm px-3 py-1 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 rounded border border-zinc-300 dark:border-zinc-700"
-          >
-            {S.addFiles}
-          </button>
-          {files.length > 0 && !converting && (
-            <button
-              onClick={() => setFiles([])}
-              className="text-sm px-3 py-1 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 rounded border border-zinc-300 dark:border-zinc-700"
-            >
-              {S.clearAll}
-            </button>
-          )}
-        </div>
-
-        <div className="flex items-center gap-3">
-          {converting && (
-            <div className="flex-1">
-              <div className="h-2 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
-                <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${overallPct}%` }} />
-              </div>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                {S.converting(doneCount, files.length, overallPct)}
-              </p>
-            </div>
-          )}
-          {converting ? (
-            <button
-              onClick={() => cancelAll()}
-              className="ml-auto px-6 py-2 bg-red-700 hover:bg-red-600 text-white rounded-lg font-medium transition-colors"
-            >
-              {S.cancel}
-            </button>
-          ) : (
-            <button
-              onClick={handleConvert}
-              disabled={pendingCount === 0}
-              className="ml-auto px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              {S.convert}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Selector({
-  label,
-  value,
-  options,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: [string, string][];
-  disabled: boolean;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <label className="text-xs text-zinc-500 dark:text-zinc-400">{label}</label>
-      <select
-        className="bg-white dark:bg-zinc-800 text-sm rounded px-2 py-1 border border-zinc-300 dark:border-zinc-700"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-      >
-        {options.map(([id, text]) => (
-          <option key={id} value={id}>{text}</option>
-        ))}
-      </select>
+      <ControlsBar
+        format={format}
+        setFormat={setFormat}
+        preset={preset}
+        setPreset={setPreset}
+        concurrency={concurrency}
+        setConcurrency={handleConcurrency}
+        outputDir={outputDir}
+        onChooseFolder={handleChooseFolder}
+        onResetFolder={() => setOutputDir(null)}
+        advancedOpen={advancedOpen}
+        setAdvancedOpen={setAdvancedOpen}
+        advancedUi={advancedUi}
+        setAdvancedUi={setAdvancedUi}
+        hwEncoders={hwEncoders}
+        showAudioExtractNote={
+          (OUTPUT_FORMATS.find((f) => f.id === format)?.audioOnly ?? false) &&
+          files.some((f) => f.status === "pending" && f.info?.video_codec)
+        }
+        converting={converting}
+        pendingCount={pendingCount}
+        doneCount={doneCount}
+        totalCount={files.length}
+        overallPct={overallPct}
+        onAddFiles={handleAddFiles}
+        onClearAll={() => setFiles([])}
+        onConvert={handleConvert}
+        onCancel={() => cancelAll()}
+      />
     </div>
   );
 }

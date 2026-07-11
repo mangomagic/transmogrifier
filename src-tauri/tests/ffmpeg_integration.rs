@@ -4,7 +4,10 @@
 
 use std::path::PathBuf;
 use std::process::Command;
-use transcodo_lib::ffmpeg_args::{build_args, JobSettings, OutputFormat, VideoPreset};
+use transcodo_lib::encoders::parse_hw_encoders;
+use transcodo_lib::ffmpeg_args::{
+    build_args, AdvancedSettings, JobSettings, OutputFormat, VideoEncoder, VideoPreset,
+};
 use transcodo_lib::probe::{parse_probe, MediaInfo};
 
 fn repo_root() -> PathBuf {
@@ -91,6 +94,7 @@ fn mov_to_mp4_produces_valid_h264_aac() {
         video_preset: VideoPreset::Medium,
         trim_start: None,
         trim_end: None,
+        advanced: None,
     };
 
     let info = convert_and_probe(&settings);
@@ -116,6 +120,7 @@ fn mov_to_mp3_extracts_audio() {
         video_preset: VideoPreset::High,
         trim_start: None,
         trim_end: None,
+        advanced: None,
     };
 
     let info = convert_and_probe(&settings);
@@ -136,6 +141,7 @@ fn mkv_to_mp4_converts() {
         video_preset: VideoPreset::SmallFile,
         trim_start: None,
         trim_end: None,
+        advanced: None,
     };
 
     let info = convert_and_probe(&settings);
@@ -172,6 +178,7 @@ fn batch_of_five_with_one_corrupt_completes() {
                     video_preset: VideoPreset::SmallFile,
                     trim_start: None,
                     trim_end: None,
+                    advanced: None,
                 };
                 let status = Command::new(sidecar("ffmpeg"))
                     .args(&build_args(&settings))
@@ -199,6 +206,100 @@ fn batch_of_five_with_one_corrupt_completes() {
     }
 }
 
+/// M3 exit criterion: trimmed output duration matches the request ±0.5 s.
+#[test]
+fn trimmed_output_duration_matches_request() {
+    let fixtures = ensure_fixtures();
+    let settings = JobSettings {
+        input_path: fixtures.join("sample.mov").to_string_lossy().into_owned(),
+        output_path: out_path("transcodo_it_trim (converted).mp4"),
+        format: OutputFormat::Mp4,
+        video_preset: VideoPreset::Medium,
+        trim_start: Some(0.5),
+        trim_end: Some(1.5),
+        advanced: None,
+    };
+
+    let info = convert_and_probe(&settings);
+    let duration = info.duration_s.expect("output has duration");
+    assert!(
+        (duration - 1.0).abs() < 0.5,
+        "trimmed duration {duration} not within ±0.5s of requested 1.0s"
+    );
+}
+
+#[test]
+fn gif_export_with_trim() {
+    let fixtures = ensure_fixtures();
+    let settings = JobSettings {
+        input_path: fixtures.join("sample.mov").to_string_lossy().into_owned(),
+        output_path: out_path("transcodo_it_clip (converted).gif"),
+        format: OutputFormat::Gif,
+        video_preset: VideoPreset::Medium,
+        trim_start: Some(0.0),
+        trim_end: Some(1.0),
+        advanced: None,
+    };
+
+    let info = convert_and_probe(&settings);
+    assert_eq!(info.video_codec.as_deref(), Some("gif"));
+    assert!(info.audio_codec.is_none(), "GIF must have no audio");
+}
+
+#[test]
+fn advanced_resolution_cap_downscales() {
+    let fixtures = ensure_fixtures();
+    let settings = JobSettings {
+        input_path: fixtures.join("sample.mov").to_string_lossy().into_owned(),
+        output_path: out_path("transcodo_it_scaled (converted).mp4"),
+        format: OutputFormat::Mp4,
+        video_preset: VideoPreset::High,
+        trim_start: None,
+        trim_end: None,
+        advanced: Some(AdvancedSettings {
+            max_height: Some(120),
+            ..Default::default()
+        }),
+    };
+
+    let info = convert_and_probe(&settings);
+    assert_eq!(info.height, Some(120));
+    assert_eq!(info.width, Some(160), "aspect ratio must be preserved");
+}
+
+/// Hardware encode path — only runs where VideoToolbox is available
+/// (probed the same way the app does at startup).
+#[test]
+fn videotoolbox_encode_works_when_available() {
+    let probe = Command::new(sidecar("ffmpeg"))
+        .args(["-hide_banner", "-encoders"])
+        .output()
+        .expect("spawn ffmpeg -encoders");
+    let available = parse_hw_encoders(&String::from_utf8_lossy(&probe.stdout));
+    if !available.contains(&"h264_videotoolbox".to_string()) {
+        eprintln!("skipping: h264_videotoolbox not available");
+        return;
+    }
+
+    let fixtures = ensure_fixtures();
+    let settings = JobSettings {
+        input_path: fixtures.join("sample.mov").to_string_lossy().into_owned(),
+        output_path: out_path("transcodo_it_vt (converted).mp4"),
+        format: OutputFormat::Mp4,
+        video_preset: VideoPreset::High,
+        trim_start: None,
+        trim_end: None,
+        advanced: Some(AdvancedSettings {
+            encoder: Some(VideoEncoder::H264VideoToolbox),
+            ..Default::default()
+        }),
+    };
+
+    let info = convert_and_probe(&settings);
+    assert_eq!(info.video_codec.as_deref(), Some("h264"));
+    assert_eq!(info.audio_codec.as_deref(), Some("aac"));
+}
+
 #[test]
 fn corrupt_input_fails_cleanly() {
     let fixtures = ensure_fixtures();
@@ -209,6 +310,7 @@ fn corrupt_input_fails_cleanly() {
         video_preset: VideoPreset::Medium,
         trim_start: None,
         trim_end: None,
+        advanced: None,
     };
 
     let args = build_args(&settings);

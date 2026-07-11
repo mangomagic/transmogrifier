@@ -103,6 +103,7 @@ mod tests {
             video_preset: VideoPreset::High,
             trim_start: None,
             trim_end: None,
+            advanced: None,
         }
     }
 

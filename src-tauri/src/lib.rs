@@ -1,4 +1,6 @@
+pub mod codec_args;
 pub mod commands;
+pub mod encoders;
 pub mod ffmpeg_args;
 pub mod ipc_constants;
 pub mod probe;
@@ -6,13 +8,15 @@ pub mod progress;
 pub mod queue;
 pub mod runner;
 pub mod scheduler;
+pub mod thumb_commands;
 pub mod thumbs;
 
 use commands::{
-    cancel_all, cancel_job, enqueue_jobs, generate_thumbnail, probe_file, set_concurrency,
-    CancelledJobs, RunningJobs,
+    cancel_all, cancel_job, enqueue_jobs, preview_args, probe_file, probe_hw_encoders,
+    set_concurrency, CancelledJobs, RunningJobs,
 };
 use scheduler::QueueState;
+use thumb_commands::{generate_filmstrip, generate_thumbnail};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -30,7 +34,10 @@ pub fn run() {
             cancel_job,
             cancel_all,
             set_concurrency,
-            generate_thumbnail
+            generate_thumbnail,
+            generate_filmstrip,
+            probe_hw_encoders,
+            preview_args
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

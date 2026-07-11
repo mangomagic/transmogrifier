@@ -19,13 +19,16 @@ Run `npm run check` after every change. Do not consider a task complete while it
 
 - `src/` — React UI. `src/lib/ipc.ts` is the ONLY place invoke()/event wiring lives. `src/lib/presets.ts` is the single source of truth for quality presets.
 - `src-tauri/src/` — Rust backend:
-  - `ffmpeg_args.rs` — pure fn `JobSettings -> Vec<String>`. Most-tested file in the repo.
+  - `ffmpeg_args.rs` — pure fn `JobSettings -> Vec<String>`. Most-tested file in the repo (golden tests in `tests/golden_args.rs`).
+  - `codec_args.rs` — pure codec/filter/metadata arg helpers used by `build_args`.
+  - `encoders.rs` — pure parser: `ffmpeg -encoders` output → available hardware encoders.
   - `progress.rs` — pure fn: ffmpeg `-progress` output line → `ProgressEvent`.
   - `probe.rs` — ffprobe JSON → `MediaInfo`.
   - `queue.rs` — job state machine (`queued → running → done | failed | cancelled`); `claim_next()` is the scheduler's atomic claim step.
   - `scheduler.rs` — `QueueState` (queue + concurrency) and `pump()`: claims queued jobs up to the concurrency limit, spawns them, re-pumps on completion.
   - `runner.rs` — runs one ffmpeg job: spawns the sidecar, streams progress, emits started/progress/done/error/cancelled events, returns terminal `JobStatus`.
   - `thumbs.rs` — pure fns: thumbnail cache key (path+mtime+size hash) and seek point.
+  - `thumb_commands.rs` — thumbnail + filmstrip commands (frame grabs via sidecar, cached, returned as data URLs).
   - `commands.rs` — thin `#[tauri::command]` wrappers only; no logic here.
 - FFmpeg/ffprobe are Tauri **sidecars** — separate processes, never linked as libraries.
 - IPC event/command names are defined once in a shared constants file mirrored TS↔Rust; never inline string literals.
@@ -55,5 +58,9 @@ Run `npm run check` after every change. Do not consider a task complete while it
 - Probe hardware encoders at startup (`ffmpeg -encoders`); fall back to libx264/x265 silently if unavailable.
 - Selecting an audio output format for a video input means "extract audio" — label it as such in UI.
 - Fast trim = stream copy with `-ss/-to` (keyframe-accurate only); re-encode when precise cuts or format change require it.
+- Trim args: `-ss` goes **before** `-i` (fast seek, frame-accurate when re-encoding). That resets timestamps, so the end point must be `-t <duration>` (end − start), not `-to <end>`.
+- HEVC in MP4/MOV needs `-tag:v hvc1` or QuickTime/Apple players refuse the file.
+- VideoToolbox encoders have no CRF — use `-q:v` (1–100); presets map Highest/High/Medium/Small → 75/65/55/45. No `-preset` speed flag either.
+- Filtergraph expressions: commas inside functions must be escaped, e.g. `scale=-2:min(720\,ih)`.
 
 <!-- Append new gotchas here as they are discovered. -->

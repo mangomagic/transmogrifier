@@ -1,6 +1,9 @@
 import { useState } from "react";
 import type { MediaInfo } from "../lib/ipc";
 import { S } from "../lib/strings";
+import { formatTime } from "../lib/time";
+import { TrimPanel } from "./TrimPanel";
+import type { TrimValue } from "./TrimPanel";
 
 export interface FileEntry {
   id: string;
@@ -11,6 +14,8 @@ export interface FileEntry {
   status: "pending" | "running" | "done" | "failed" | "cancelled";
   percent: number;
   error: string | null;
+  trimStart: number | null;
+  trimEnd: number | null;
 }
 
 function formatDuration(s: number | null): string {
@@ -51,12 +56,22 @@ function AudioPlaceholder() {
 export function FileRow({
   file,
   onRemove,
+  onTrimChange,
 }: {
   file: FileEntry;
   onRemove: (id: string) => void;
+  onTrimChange: (id: string, trim: TrimValue) => void;
 }) {
   const [logOpen, setLogOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [trimOpen, setTrimOpen] = useState(false);
+
+  const hasTrim = file.trimStart != null || file.trimEnd != null;
+  const trimLabel = hasTrim
+    ? `✂ ${formatTime(file.trimStart ?? 0)}–${
+        file.trimEnd != null ? formatTime(file.trimEnd) : "end"
+      }`
+    : `✂ ${S.trim}`;
 
   const copyLog = async () => {
     if (!file.error) return;
@@ -97,6 +112,18 @@ export function FileRow({
             </div>
           )}
         </div>
+        {file.status === "pending" && file.info?.duration_s != null && (
+          <button
+            onClick={() => setTrimOpen(!trimOpen)}
+            className={`text-xs px-2 py-0.5 rounded shrink-0 border ${
+              hasTrim
+                ? "border-blue-400 text-blue-600 dark:text-blue-400"
+                : "border-zinc-300 dark:border-zinc-700 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+            }`}
+          >
+            {trimLabel}
+          </button>
+        )}
         <span
           className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${STATUS_STYLES[file.status]}`}
         >
@@ -112,6 +139,15 @@ export function FileRow({
           </button>
         )}
       </div>
+      {trimOpen && file.status === "pending" && (
+        <TrimPanel
+          path={file.path}
+          durationS={file.info?.duration_s ?? null}
+          hasVideo={file.info?.video_codec != null}
+          value={{ start: file.trimStart, end: file.trimEnd }}
+          onChange={(trim) => onTrimChange(file.id, trim)}
+        />
+      )}
       {file.status === "failed" && (
         <div className="mt-2 text-xs">
           <div className="flex items-center gap-3">

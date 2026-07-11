@@ -1,14 +1,13 @@
-use crate::ffmpeg_args::JobSettings;
+use crate::encoders::parse_hw_encoders;
+use crate::ffmpeg_args::{build_args, JobSettings};
 use crate::ipc_constants::EVT_JOB_CANCELLED;
 use crate::probe::{parse_probe, MediaInfo};
 use crate::queue::{Job, JobStatus};
 use crate::scheduler::{pump, QueueState};
-use crate::thumbs::{thumb_cache_key, thumb_seek_seconds};
-use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager, Runtime, State};
+use tauri::{AppHandle, Emitter, Runtime, State};
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 
@@ -157,60 +156,25 @@ pub async fn probe_file<R: Runtime>(app: AppHandle<R>, path: String) -> Result<M
     parse_probe(&json).map_err(|e| e.to_string())
 }
 
-/// Generate (or fetch from cache) a small JPEG thumbnail; returns a data URL.
-/// Errors for audio-only files — the UI shows a placeholder icon instead.
+/// List hardware encoders available on this machine (probed at startup;
+/// the UI falls back to software silently when empty).
 #[tauri::command]
-pub async fn generate_thumbnail<R: Runtime>(
-    app: AppHandle<R>,
-    path: String,
-    duration_s: Option<f64>,
-) -> Result<String, String> {
-    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
-    let mtime = meta
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-
-    let cache_dir = app
-        .path()
-        .app_cache_dir()
+pub async fn probe_hw_encoders<R: Runtime>(app: AppHandle<R>) -> Result<Vec<String>, String> {
+    let output = app
+        .shell()
+        .sidecar("ffmpeg")
         .map_err(|e| e.to_string())?
-        .join("thumbs");
-    std::fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
+        .args(["-hide_banner", "-encoders"])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
 
-    let key = thumb_cache_key(&path, mtime, meta.len());
-    let thumb_path = cache_dir.join(format!("{key}.jpg"));
+    Ok(parse_hw_encoders(&String::from_utf8_lossy(&output.stdout)))
+}
 
-    if !thumb_path.exists() {
-        let seek = format!("{:.3}", thumb_seek_seconds(duration_s));
-        let output = app
-            .shell()
-            .sidecar("ffmpeg")
-            .map_err(|e| e.to_string())?
-            .args([
-                "-y",
-                "-ss",
-                &seek,
-                "-i",
-                &path,
-                "-frames:v",
-                "1",
-                "-vf",
-                "scale=96:-1",
-                thumb_path.to_str().ok_or("invalid cache path")?,
-            ])
-            .output()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        if !output.status.success() || !thumb_path.exists() {
-            return Err("no video frame available".into());
-        }
-    }
-
-    let bytes = std::fs::read(&thumb_path).map_err(|e| e.to_string())?;
-    let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
-    Ok(format!("data:image/jpeg;base64,{b64}"))
+/// Build (but don't run) the ffmpeg args for given settings — powers the
+/// read-only flags footer in the advanced panel.
+#[tauri::command]
+pub fn preview_args(settings: JobSettings) -> Vec<String> {
+    build_args(&settings)
 }

@@ -29,7 +29,18 @@ Generate test media first if needed: `./fixtures/gen_fixtures.sh`
 - ✅ **Cancel mid-conversion** *(2026-07-11, pre-queue implementation)* — start a long conversion, hit Cancel: ffmpeg process dies, partial output file is deleted, row shows *cancelled*.
   - ⬜ **Re-verify after M2 queue rework** — Cancel now goes through `cancel_all`: with Parallel=2 and several files queued, Cancel must kill both running jobs *and* skip all queued ones.
 - ⬜ **Error log** — on the failed `corrupt.mov` row: "Show log" expands the stderr tail, "Copy log" puts it on the clipboard.
-- ⬜ **Audio extract** — convert `sample.mov` to MP3; output plays. (UI labelling of "audio will be extracted" not yet wired to format selection.)
+- ⬜ **Audio extract** — convert `sample.mov` to MP3; output plays. Selecting an audio format with video files pending shows the "Audio will be extracted from video" note next to the format selector.
+
+## Trim & advanced (M3)
+
+- ⬜ **Trim panel** — on a pending video row, click ✂ Trim: a filmstrip of 6 frames with timestamps appears, plus Start/End fields. Enter `0:00.5` / `0:01.5` on `sample.mov`, convert; output is ~1 s (the trim badge on the row shows the range).
+- ⬜ **Trim validation** — end ≤ start, times past clip end, or garbage input show the inline error and don't commit.
+- ⬜ **Trim on audio file** — ✂ on `sample.mp3`: no filmstrip (audio has no frames), but Start/End fields still work.
+- ⬜ **Advanced panel** — ⚙ Advanced (only for MP4/MKV/MOV): codec, resolution, FPS, CRF, audio kbps, hardware toggle, strip metadata. The FFmpeg flags footer updates live as options change.
+- ⬜ **Hardware encoding** — with "Hardware encoding" on (default), the flags footer shows `h264_videotoolbox`; unticking switches it to `libx264`. Convert a file each way; both outputs play.
+- ⬜ **H.265 output** — Advanced → codec H.265, convert `sample.mov` to MP4; output plays in QuickTime (hvc1 tag).
+- ⬜ **GIF export** — format GIF + trim to ~1 s on `sample.mov`; output is an animated GIF that loops, reasonable colours (palette pass).
+- ⬜ **Resolution cap** — Advanced → 480; convert a 720p+ file; output height is ≤480 with aspect preserved. Small-file preset alone also caps at 720.
 
 ## Settings & appearance
 
@@ -40,6 +51,7 @@ Generate test media first if needed: `./fixtures/gen_fixtures.sh`
 
 ## Not yet implemented (don't test)
 
-- Trim, advanced quality panel, hardware-accel toggle, GIF export (M3)
 - Per-file format overrides, "Show in Finder" link, dock badge progress
+- Fast trim via stream copy (all trims currently re-encode)
+- Folder drop with recursive expansion
 - Auto-update (M4)

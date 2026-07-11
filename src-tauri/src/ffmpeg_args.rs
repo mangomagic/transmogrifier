@@ -1,6 +1,9 @@
+use crate::codec_args::{
+    audio_codec_args, audio_vbr_quality, metadata_args, video_codec_args, video_filters, webm_crf,
+};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum OutputFormat {
     Mp4,
     WebM,
@@ -13,12 +16,31 @@ pub enum OutputFormat {
     Flac,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum VideoPreset {
     Highest,
     High,
     Medium,
     SmallFile,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub enum VideoEncoder {
+    Libx264,
+    Libx265,
+    H264VideoToolbox,
+    HevcVideoToolbox,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AdvancedSettings {
+    pub encoder: Option<VideoEncoder>,
+    pub max_height: Option<u32>,
+    pub fps: Option<u32>,
+    pub crf: Option<u8>,
+    pub audio_bitrate_kbps: Option<u32>,
+    #[serde(default)]
+    pub strip_metadata: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,39 +51,41 @@ pub struct JobSettings {
     pub video_preset: VideoPreset,
     pub trim_start: Option<f64>,
     pub trim_end: Option<f64>,
+    #[serde(default)]
+    pub advanced: Option<AdvancedSettings>,
 }
 
 pub fn build_args(settings: &JobSettings) -> Vec<String> {
-    let mut args: Vec<String> = vec![
-        "-y".into(),
-        "-i".into(),
-        settings.input_path.clone(),
-    ];
+    let mut args: Vec<String> = vec!["-y".into()];
 
+    // -ss before -i: fast keyframe seek, frame-accurate when re-encoding
     if let Some(start) = settings.trim_start {
-        args.extend(["-ss".into(), format!("{:.3}", start)]);
+        args.extend(["-ss".into(), format!("{start:.3}")]);
     }
+    args.extend(["-i".into(), settings.input_path.clone()]);
+    // With -ss before -i timestamps reset to 0, so the end point becomes a
+    // duration (-t), not an absolute -to.
     if let Some(end) = settings.trim_end {
-        args.extend(["-to".into(), format!("{:.3}", end)]);
+        let duration = end - settings.trim_start.unwrap_or(0.0);
+        args.extend(["-t".into(), format!("{duration:.3}")]);
     }
 
     match settings.format {
         OutputFormat::Mp4 | OutputFormat::Mkv | OutputFormat::Mov => {
-            let (crf, speed) = video_crf(&settings.video_preset);
-            args.extend([
-                "-c:v".into(), "libx264".into(),
-                "-crf".into(), crf.to_string(),
-                "-preset".into(), speed.into(),
-                "-c:a".into(), "aac".into(),
-                "-b:a".into(), "192k".into(),
-                "-map_metadata".into(), "0".into(),
-                "-map_chapters".into(), "0".into(),
-            ]);
+            if let Some(vf) = video_filters(settings) {
+                args.extend(["-vf".into(), vf]);
+            }
+            args.extend(video_codec_args(settings));
+            args.extend(audio_codec_args(settings));
+            args.extend(metadata_args(settings));
             if settings.format == OutputFormat::Mp4 {
                 args.extend(["-movflags".into(), "+faststart".into()]);
             }
         }
         OutputFormat::WebM => {
+            if let Some(vf) = video_filters(settings) {
+                args.extend(["-vf".into(), vf]);
+            }
             let crf = webm_crf(&settings.video_preset);
             args.extend([
                 "-c:v".into(), "libvpx-vp9".into(),
@@ -86,11 +110,8 @@ pub fn build_args(settings: &JobSettings) -> Vec<String> {
             ]);
         }
         OutputFormat::Aac => {
-            args.extend([
-                "-vn".into(),
-                "-c:a".into(), "aac".into(),
-                "-b:a".into(), audio_bitrate(&settings.video_preset).into(),
-            ]);
+            args.extend(["-vn".into()]);
+            args.extend(audio_codec_args(settings));
         }
         OutputFormat::Wav => {
             args.extend(["-vn".into(), "-c:a".into(), "pcm_s16le".into()]);
@@ -107,135 +128,4 @@ pub fn build_args(settings: &JobSettings) -> Vec<String> {
     ]);
 
     args
-}
-
-fn video_crf(preset: &VideoPreset) -> (u8, &'static str) {
-    match preset {
-        VideoPreset::Highest => (18, "slow"),
-        VideoPreset::High => (20, "medium"),
-        VideoPreset::Medium => (23, "medium"),
-        VideoPreset::SmallFile => (28, "medium"),
-    }
-}
-
-fn webm_crf(preset: &VideoPreset) -> u8 {
-    match preset {
-        VideoPreset::Highest => 24,
-        VideoPreset::High => 30,
-        VideoPreset::Medium => 33,
-        VideoPreset::SmallFile => 40,
-    }
-}
-
-fn audio_vbr_quality(preset: &VideoPreset) -> u8 {
-    match preset {
-        VideoPreset::Highest => 0,
-        VideoPreset::High => 2,
-        VideoPreset::Medium => 4,
-        VideoPreset::SmallFile => 6,
-    }
-}
-
-fn audio_bitrate(preset: &VideoPreset) -> &'static str {
-    match preset {
-        VideoPreset::Highest => "320k",
-        VideoPreset::High => "192k",
-        VideoPreset::Medium => "128k",
-        VideoPreset::SmallFile => "96k",
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn settings(format: OutputFormat, preset: VideoPreset) -> JobSettings {
-        JobSettings {
-            input_path: "/in/clip.mov".into(),
-            output_path: "/out/clip.mp4".into(),
-            format,
-            video_preset: preset,
-            trim_start: None,
-            trim_end: None,
-        }
-    }
-
-    #[test]
-    fn mp4_high_golden() {
-        let args = build_args(&settings(OutputFormat::Mp4, VideoPreset::High));
-        assert_eq!(
-            args,
-            vec![
-                "-y", "-i", "/in/clip.mov",
-                "-c:v", "libx264", "-crf", "20", "-preset", "medium",
-                "-c:a", "aac", "-b:a", "192k",
-                "-map_metadata", "0", "-map_chapters", "0",
-                "-movflags", "+faststart",
-                "-progress", "pipe:1", "-nostats",
-                "/out/clip.mp4",
-            ]
-        );
-    }
-
-    #[test]
-    fn mp4_highest_golden() {
-        let args = build_args(&settings(OutputFormat::Mp4, VideoPreset::Highest));
-        let crf_idx = args.iter().position(|a| a == "-crf").unwrap();
-        assert_eq!(args[crf_idx + 1], "18");
-        let preset_idx = args.iter().position(|a| a == "-preset").unwrap();
-        assert_eq!(args[preset_idx + 1], "slow");
-    }
-
-    #[test]
-    fn mp4_always_has_faststart() {
-        for preset in [VideoPreset::Highest, VideoPreset::High, VideoPreset::Medium, VideoPreset::SmallFile] {
-            let args = build_args(&settings(OutputFormat::Mp4, preset));
-            let movflags_idx = args.iter().position(|a| a == "-movflags").unwrap();
-            assert!(args[movflags_idx + 1].contains("faststart"));
-        }
-    }
-
-    #[test]
-    fn mp4_always_copies_metadata() {
-        let args = build_args(&settings(OutputFormat::Mp4, VideoPreset::High));
-        assert!(args.windows(2).any(|w| w == ["-map_metadata", "0"]));
-        assert!(args.windows(2).any(|w| w == ["-map_chapters", "0"]));
-    }
-
-    #[test]
-    fn mp3_extract_audio() {
-        let args = build_args(&settings(OutputFormat::Mp3, VideoPreset::High));
-        assert!(args.contains(&"-vn".to_string()));
-        assert!(args.windows(2).any(|w| w == ["-c:a", "libmp3lame"]));
-    }
-
-    #[test]
-    fn wav_is_lossless_pcm() {
-        let args = build_args(&settings(OutputFormat::Wav, VideoPreset::Highest));
-        assert!(args.contains(&"-vn".to_string()));
-        assert!(args.windows(2).any(|w| w == ["-c:a", "pcm_s16le"]));
-    }
-
-    #[test]
-    fn trim_inserts_ss_and_to() {
-        let mut s = settings(OutputFormat::Mp4, VideoPreset::High);
-        s.trim_start = Some(5.0);
-        s.trim_end = Some(30.0);
-        let args = build_args(&s);
-        let ss_idx = args.iter().position(|a| a == "-ss").unwrap();
-        assert_eq!(args[ss_idx + 1], "5.000");
-        let to_idx = args.iter().position(|a| a == "-to").unwrap();
-        assert_eq!(args[to_idx + 1], "30.000");
-    }
-
-    #[test]
-    fn progress_flag_always_last_before_output() {
-        let args = build_args(&settings(OutputFormat::Mp4, VideoPreset::High));
-        let n = args.len();
-        // order: ... -progress pipe:1 -nostats <output>
-        assert_eq!(args[n - 1], "/out/clip.mp4");
-        assert_eq!(args[n - 4], "-progress");
-        assert_eq!(args[n - 3], "pipe:1");
-        assert_eq!(args[n - 2], "-nostats");
-    }
 }
