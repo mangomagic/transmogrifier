@@ -311,7 +311,34 @@ fn videotoolbox_encode_works_when_available() {
         allow_overwrite: false,
     };
 
-    let info = convert_and_probe(&settings);
+    // Listed in -encoders does NOT mean usable: headless VMs (GitHub macOS
+    // runners) list VideoToolbox but cannot create a compression session.
+    let output = Command::new(sidecar("ffmpeg"))
+        .args(&build_args(&settings))
+        .output()
+        .expect("spawn ffmpeg");
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("cannot create compression session") {
+            eprintln!("skipping: VideoToolbox listed but unusable (headless VM)");
+            return;
+        }
+        panic!("ffmpeg failed: {stderr}");
+    }
+
+    let probe_out = Command::new(sidecar("ffprobe"))
+        .args([
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
+            "-show_format",
+            "-show_streams",
+            &settings.output_path,
+        ])
+        .output()
+        .expect("spawn ffprobe");
+    let info = parse_probe(&String::from_utf8(probe_out.stdout).unwrap()).unwrap();
     assert_eq!(info.video_codec.as_deref(), Some("h264"));
     assert_eq!(info.audio_codec.as_deref(), Some("aac"));
 }

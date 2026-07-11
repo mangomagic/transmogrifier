@@ -90,23 +90,29 @@ mod tests {
         false
     }
 
+    /// Path::join uses the platform separator; normalise so the same
+    /// expectations hold on Windows (`\`) and Unix (`/`).
+    fn norm(p: &str) -> String {
+        p.replace('\\', "/")
+    }
+
     #[test]
     fn different_extension_gets_clean_name() {
         let out = resolve_outputs(&[req("/m/clip.mov", None, "mp4")], false, no_disk);
-        assert_eq!(out[0].path, "/m/clip.mp4");
+        assert_eq!(norm(&out[0].path), "/m/clip.mp4");
         assert!(!out[0].exists);
     }
 
     #[test]
     fn same_extension_falls_back_to_suffix() {
         let out = resolve_outputs(&[req("/m/clip.mp4", None, "mp4")], false, no_disk);
-        assert_eq!(out[0].path, "/m/clip (converted).mp4");
+        assert_eq!(norm(&out[0].path), "/m/clip (converted).mp4");
     }
 
     #[test]
     fn source_clash_is_case_insensitive() {
         let out = resolve_outputs(&[req("/m/Clip.MP4", None, "mp4")], false, no_disk);
-        assert_eq!(out[0].path, "/m/Clip (converted).mp4");
+        assert_eq!(norm(&out[0].path), "/m/Clip (converted).mp4");
     }
 
     #[test]
@@ -115,8 +121,8 @@ mod tests {
         // IS the other source — must be suffixed, silently.
         let reqs = [req("/m/clip.mov", None, "mp4"), req("/m/clip.mp4", None, "mp4")];
         let out = resolve_outputs(&reqs, false, no_disk);
-        assert_eq!(out[0].path, "/m/clip (converted).mp4");
-        assert_eq!(out[1].path, "/m/clip (converted 2).mp4");
+        assert_eq!(norm(&out[0].path), "/m/clip (converted).mp4");
+        assert_eq!(norm(&out[1].path), "/m/clip (converted 2).mp4");
     }
 
     #[test]
@@ -127,30 +133,30 @@ mod tests {
             req("/b/clip.mov", Some("/out"), "mp4"),
         ];
         let out = resolve_outputs(&reqs, false, no_disk);
-        assert_eq!(out[0].path, "/out/clip.mp4");
-        assert_eq!(out[1].path, "/out/clip (converted).mp4");
+        assert_eq!(norm(&out[0].path), "/out/clip.mp4");
+        assert_eq!(norm(&out[1].path), "/out/clip (converted).mp4");
     }
 
     #[test]
     fn existing_file_is_surfaced_not_skipped() {
-        let disk = |p: &str| p == "/m/clip.mp4";
+        let disk = |p: &str| norm(p) == "/m/clip.mp4";
         let out = resolve_outputs(&[req("/m/clip.mov", None, "mp4")], false, disk);
-        assert_eq!(out[0].path, "/m/clip.mp4");
+        assert_eq!(norm(&out[0].path), "/m/clip.mp4");
         assert!(out[0].exists, "conflict must be flagged for the prompt");
     }
 
     #[test]
     fn avoid_existing_uniquifies_past_disk_files() {
-        let disk = |p: &str| p == "/m/clip.mp4" || p == "/m/clip (converted).mp4";
+        let disk = |p: &str| norm(p) == "/m/clip.mp4" || norm(p) == "/m/clip (converted).mp4";
         let out = resolve_outputs(&[req("/m/clip.mov", None, "mp4")], true, disk);
-        assert_eq!(out[0].path, "/m/clip (converted 2).mp4");
+        assert_eq!(norm(&out[0].path), "/m/clip (converted 2).mp4");
         assert!(!out[0].exists);
     }
 
     #[test]
     fn output_dir_overrides_source_folder() {
         let out = resolve_outputs(&[req("/m/clip.mov", Some("/elsewhere"), "mp4")], false, no_disk);
-        assert_eq!(out[0].path, "/elsewhere/clip.mp4");
+        assert_eq!(norm(&out[0].path), "/elsewhere/clip.mp4");
     }
 
     #[test]

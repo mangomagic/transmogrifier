@@ -57,7 +57,7 @@ Run `npm run check` after every change. Do not consider a task complete while it
 
 - Use Tauri's native file-drop event, NOT HTML5 drag-and-drop — HTML5 DnD does not deliver real file paths.
 - Parse progress from `-progress pipe:1` key=value output, not stderr scraping.
-- Probe hardware encoders at startup (`ffmpeg -encoders`); fall back to libx264/x265 silently if unavailable.
+- Probe hardware encoders at startup (`ffmpeg -encoders`); fall back to libx264/x265 silently if unavailable. Listed ≠ usable: headless VMs (GitHub macOS runners) list VideoToolbox but fail with "cannot create compression session" — a hw encode can still fail at runtime and surfaces as a per-job error.
 - Selecting an audio output format for a video input means "extract audio" — label it as such in UI.
 - Fast trim = stream copy (`-c copy`, keyframe-accurate only); used automatically only when trim is set, codecs fit the target container, preset is the default High, and the advanced panel is untouched (src/lib/fasttrim.ts decides). Everything else re-encodes.
 - Trim args: `-ss` goes **before** `-i` (fast seek, frame-accurate when re-encoding). That resets timestamps, so the end point must be `-t <duration>` (end − start), not `-to <end>`.
