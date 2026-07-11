@@ -46,6 +46,7 @@ Run `npm run check` after every change. Do not consider a task complete while it
 - `ffmpeg_args.rs` has table-driven golden tests asserting exact argument vectors per (input, format, preset). Any behaviour change must update these deliberately.
 - Integration tests run real FFmpeg against fixtures and assert on **ffprobe output** of the result (container, codec, duration ±0.5 s, resolution). This is ground truth for "conversion works."
 - New FFmpeg knowledge (flag fixes, edge cases) must be encoded as an arg-builder case + golden test, not left in chat/comments.
+- `docs/manual-testing.md` tracks GUI flows automated tests can't cover. Maintain it in the same commit as the change: add items for new manual-only behaviour, and reset an item to pending when a change could plausibly break it. Only a human marks items verified.
 
 ## Gotchas
 
