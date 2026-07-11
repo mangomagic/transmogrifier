@@ -64,5 +64,6 @@ Run `npm run check` after every change. Do not consider a task complete while it
 - HEVC in MP4/MOV needs `-tag:v hvc1` or QuickTime/Apple players refuse the file.
 - VideoToolbox encoders have no CRF — use `-q:v` (1–100); presets map Highest/High/Medium/Small → 75/65/55/45. No `-preset` speed flag either.
 - Filtergraph expressions: commas inside functions must be escaped, e.g. `scale=-2:min(720\,ih)`.
+- The backend queue is the source of truth for job state; UI events (`job_started`/`progress`/`job_done`…) are best-effort delivery. macOS menu/modal interaction can starve webview event delivery mid-batch, so the UI polls `get_queue_state` once a second while work is in flight and reconciles (`src/lib/reconcile.ts`). Never make UI state depend on catching every event.
 
 <!-- Append new gotchas here as they are discovered. -->

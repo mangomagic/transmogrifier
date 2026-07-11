@@ -32,6 +32,7 @@ Generate test media first if needed: `./fixtures/gen_fixtures.sh`
 - ✅ **Cancel mid-conversion** *(2026-07-11, pre-queue implementation)* — start a long conversion, hit Cancel: ffmpeg process dies, partial output file is deleted, row shows *cancelled*.
   - ⬜ **Re-verify after M2 queue rework** — Cancel now goes through `cancel_all`: with Parallel=2 and several files queued, Cancel must kill both running jobs *and* skip all queued ones.
 - ⬜ **Error log** — on the failed `corrupt.mov` row: "Show log" expands the stderr tail, "Copy log" puts it on the clipboard.
+- ⬜ **Menu interaction during batch** *(regression: 2026-07-11 batch appeared to stop after opening About)* — start a batch of 6+ files (Parallel=4), then open menus, the About panel, and drag the window around while it runs. Rows must keep progressing (the UI reconciles with the backend queue every second even if events are missed) and the batch must complete.
 - ⬜ **Audio extract** — convert `sample.mov` to MP3; output plays. Selecting an audio format with video files pending shows the "Audio will be extracted from video" note next to the format selector.
 
 ## Trim & advanced (M3)

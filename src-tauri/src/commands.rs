@@ -197,3 +197,31 @@ pub fn resolve_output_paths(
 ) -> Vec<crate::output_naming::ResolvedOutput> {
     crate::output_naming::resolve_outputs(&reqs, avoid_existing, |p| std::path::Path::new(p).exists())
 }
+
+#[derive(Debug, Serialize)]
+pub struct JobSnapshot {
+    pub id: String,
+    pub status: JobStatus,
+    pub progress_percent: f32,
+    pub error: Option<String>,
+}
+
+/// Snapshot of every job the queue knows about. The UI polls this while
+/// work is in flight and reconciles — events are the fast path, but any
+/// missed event (e.g. macOS menu modal starving webview delivery) heals here.
+#[tauri::command]
+pub fn get_queue_state(state: State<'_, QueueState>) -> Vec<JobSnapshot> {
+    state
+        .queue
+        .lock()
+        .unwrap()
+        .all()
+        .iter()
+        .map(|j| JobSnapshot {
+            id: j.id.clone(),
+            status: j.status,
+            progress_percent: j.progress_percent,
+            error: j.error.clone(),
+        })
+        .collect()
+}

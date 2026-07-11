@@ -12,6 +12,7 @@ pub const CMD_PROBE_HW_ENCODERS: &str = "probe_hw_encoders";
 pub const CMD_PREVIEW_ARGS: &str = "preview_args";
 pub const CMD_EXPAND_PATHS: &str = "expand_paths";
 pub const CMD_RESOLVE_OUTPUT_PATHS: &str = "resolve_output_paths";
+pub const CMD_GET_QUEUE_STATE: &str = "get_queue_state";
 pub const EVT_PROGRESS: &str = "progress";
 pub const EVT_JOB_STARTED: &str = "job_started";
 pub const EVT_JOB_DONE: &str = "job_done";

@@ -12,11 +12,13 @@ import {
   onJobStarted,
   onProgress,
   probeFile,
+  getQueueState,
   probeHwEncoders,
   resolveOutputPaths,
   setConcurrency as ipcSetConcurrency,
 } from "./lib/ipc";
 import type { ResolvedOutput } from "./lib/ipc";
+import { reconcile } from "./lib/reconcile";
 import { buildAdvancedSettings, DEFAULT_ADVANCED_UI } from "./lib/advanced";
 import type { AdvancedUi } from "./lib/advanced";
 import { conversionProgress } from "./lib/batch";
@@ -88,6 +90,23 @@ export default function App() {
     if (!settingsLoaded.current) return;
     saveSettings({ format, preset, outputDir, concurrency });
   }, [format, preset, outputDir, concurrency]);
+
+  // Reconcile UI rows against the backend queue while work may be in
+  // flight. Events are the fast path; this heals any missed ones (e.g.
+  // a macOS menu/About panel blocking webview event delivery mid-batch).
+  const hasOpenWork = files.some((f) => f.status === "pending" || f.status === "running");
+  useEffect(() => {
+    if (!hasOpenWork) return;
+    const timer = setInterval(async () => {
+      try {
+        const snapshots = await getQueueState();
+        setFiles((prev) => reconcile(prev, snapshots).files);
+      } catch {
+        // backend unavailable — try again next tick
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [hasOpenWork]);
 
   const addPaths = async (rawPaths: string[]) => {
     // Folders expand recursively to their media files (backend walk)

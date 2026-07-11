@@ -10,6 +10,7 @@ export const CMD_PROBE_HW_ENCODERS = "probe_hw_encoders";
 export const CMD_PREVIEW_ARGS = "preview_args";
 export const CMD_EXPAND_PATHS = "expand_paths";
 export const CMD_RESOLVE_OUTPUT_PATHS = "resolve_output_paths";
+export const CMD_GET_QUEUE_STATE = "get_queue_state";
 export const EVT_PROGRESS = "progress";
 export const EVT_JOB_STARTED = "job_started";
 export const EVT_JOB_DONE = "job_done";

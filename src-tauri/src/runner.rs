@@ -59,6 +59,15 @@ pub async fn run_job<R: Runtime>(app: &AppHandle<R>, job: &Job) -> JobStatus {
                 // ffmpeg -progress emits blocks ending with progress=continue/end
                 if line.contains("progress=") {
                     if let Some(ev) = parse_progress_block(&job.id, &stdout_buf, job.duration_us) {
+                        // Mirror progress into the queue: it is the source of
+                        // truth the UI reconciles against when events are missed
+                        {
+                            let state = app.state::<crate::scheduler::QueueState>();
+                            let mut queue = state.queue.lock().unwrap();
+                            if let Some(j) = queue.get_mut(&job.id) {
+                                j.progress_percent = ev.percent;
+                            }
+                        }
                         let _ = app.emit(
                             EVT_PROGRESS,
                             ProgressPayload {
@@ -95,11 +104,19 @@ pub async fn run_job<R: Runtime>(app: &AppHandle<R>, job: &Job) -> JobStatus {
                     let _ = app.emit(EVT_JOB_DONE, JobDonePayload { job_id: job.id.clone() });
                     return JobStatus::Done;
                 } else {
+                    let message = stderr_tail(&stderr_buf);
+                    {
+                        let state = app.state::<crate::scheduler::QueueState>();
+                        let mut queue = state.queue.lock().unwrap();
+                        if let Some(j) = queue.get_mut(&job.id) {
+                            j.error = Some(message.clone());
+                        }
+                    }
                     let _ = app.emit(
                         EVT_JOB_ERROR,
                         JobErrorPayload {
                             job_id: job.id.clone(),
-                            message: stderr_tail(&stderr_buf),
+                            message,
                         },
                     );
                     return JobStatus::Failed;

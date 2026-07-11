@@ -15,7 +15,8 @@ pub mod thumbs;
 
 use commands::{
     cancel_all, cancel_job, enqueue_jobs, expand_paths, preview_args, probe_file,
-    probe_hw_encoders, resolve_output_paths, set_concurrency, CancelledJobs, RunningJobs,
+    get_queue_state, probe_hw_encoders, resolve_output_paths, set_concurrency, CancelledJobs,
+    RunningJobs,
 };
 use scheduler::QueueState;
 use thumb_commands::{generate_filmstrip, generate_thumbnail};
@@ -43,6 +44,7 @@ pub fn run() {
             probe_hw_encoders,
             preview_args,
             resolve_output_paths,
+            get_queue_state,
             expand_paths
         ])
         .run(tauri::generate_context!())

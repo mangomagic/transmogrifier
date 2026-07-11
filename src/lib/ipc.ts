@@ -7,6 +7,7 @@ import {
   CMD_EXPAND_PATHS,
   CMD_GENERATE_FILMSTRIP,
   CMD_GENERATE_THUMBNAIL,
+  CMD_GET_QUEUE_STATE,
   CMD_PREVIEW_ARGS,
   CMD_PROBE_FILE,
   CMD_PROBE_HW_ENCODERS,
@@ -51,6 +52,13 @@ export interface NamingRequest {
 export interface ResolvedOutput {
   path: string;
   exists: boolean;
+}
+
+export interface JobSnapshot {
+  id: string;
+  status: "queued" | "running" | "done" | "failed" | "cancelled";
+  progress_percent: number;
+  error: string | null;
 }
 
 export interface EnqueueJob {
@@ -131,6 +139,10 @@ export function previewArgs(settings: JobSettings): Promise<string[]> {
 
 export function expandPaths(paths: string[]): Promise<string[]> {
   return invoke<string[]>(CMD_EXPAND_PATHS, { paths });
+}
+
+export function getQueueState(): Promise<JobSnapshot[]> {
+  return invoke<JobSnapshot[]>(CMD_GET_QUEUE_STATE);
 }
 
 export function resolveOutputPaths(
