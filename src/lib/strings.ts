@@ -11,8 +11,8 @@ export const S = {
   saveTo: "Save to",
   sameFolderAsSource: "Same folder as source",
   chooseFolder: "Choose…",
-  converting: (done: number, total: number, pct: number) =>
-    `Converting ${done} of ${total} · ${pct}%`,
+  converting: (position: number, total: number, pct: number) =>
+    `Converting ${position} of ${total} · ${pct}%`,
   conversionDone: "Done",
   conversionFailed: "Failed",
   showInFinder: "Show in Finder",

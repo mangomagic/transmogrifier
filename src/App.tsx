@@ -17,6 +17,7 @@ import {
 } from "./lib/ipc";
 import { buildAdvancedSettings, DEFAULT_ADVANCED_UI } from "./lib/advanced";
 import type { AdvancedUi } from "./lib/advanced";
+import { conversionProgress } from "./lib/batch";
 import { canFastTrim } from "./lib/fasttrim";
 import { deriveOutputPath } from "./lib/paths";
 import { DEFAULT_FORMAT, DEFAULT_PRESET, OUTPUT_FORMATS } from "./lib/presets";
@@ -190,16 +191,8 @@ export default function App() {
   };
 
   const pendingCount = files.filter((f) => f.status === "pending").length;
-  const activeCount = files.filter((f) => f.status === "running").length;
-  const doneCount = files.filter((f) => f.status === "done").length;
-  const converting = activeCount > 0;
-  const overallPct =
-    files.length > 0
-      ? Math.round(
-          files.reduce((sum, f) => sum + (f.status === "done" ? 100 : f.percent), 0) /
-            files.length
-        )
-      : 0;
+  const progress = conversionProgress(files);
+  const converting = progress.active;
 
   return (
     <div
@@ -266,9 +259,9 @@ export default function App() {
         }
         converting={converting}
         pendingCount={pendingCount}
-        doneCount={doneCount}
-        totalCount={files.length}
-        overallPct={overallPct}
+        position={progress.position}
+        totalCount={progress.total}
+        overallPct={progress.percent}
         onAddFiles={handleAddFiles}
         onClearAll={() => setFiles([])}
         onConvert={handleConvert}

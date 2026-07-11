@@ -24,7 +24,8 @@ export interface ControlsBarProps {
   showAudioExtractNote: boolean;
   converting: boolean;
   pendingCount: number;
-  doneCount: number;
+  /// 1-based position of the file(s) currently converting
+  position: number;
   totalCount: number;
   overallPct: number;
   onAddFiles: () => void;
@@ -117,7 +118,7 @@ export function ControlsBar(p: ControlsBarProps) {
               <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${p.overallPct}%` }} />
             </div>
             <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-              {S.converting(p.doneCount, p.totalCount, p.overallPct)}
+              {S.converting(p.position, p.totalCount, p.overallPct)}
             </p>
           </div>
         )}
