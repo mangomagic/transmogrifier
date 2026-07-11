@@ -1,8 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import {
+  CMD_CANCEL_JOB,
   CMD_CONVERT_FILE,
   CMD_PROBE_FILE,
+  EVT_JOB_CANCELLED,
   EVT_JOB_DONE,
   EVT_JOB_ERROR,
   EVT_PROGRESS,
@@ -45,6 +47,10 @@ export interface JobErrorPayload {
   message: string;
 }
 
+export interface JobCancelledPayload {
+  job_id: string;
+}
+
 export function probeFile(path: string): Promise<MediaInfo> {
   return invoke<MediaInfo>(CMD_PROBE_FILE, { path });
 }
@@ -77,4 +83,14 @@ export function onJobError(
   cb: (payload: JobErrorPayload) => void
 ): Promise<UnlistenFn> {
   return listen<JobErrorPayload>(EVT_JOB_ERROR, (e) => cb(e.payload));
+}
+
+export function onJobCancelled(
+  cb: (payload: JobCancelledPayload) => void
+): Promise<UnlistenFn> {
+  return listen<JobCancelledPayload>(EVT_JOB_CANCELLED, (e) => cb(e.payload));
+}
+
+export function cancelJob(jobId: string): Promise<void> {
+  return invoke<void>(CMD_CANCEL_JOB, { jobId });
 }

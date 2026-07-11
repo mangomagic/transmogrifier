@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
-import { convertFile, onJobDone, onJobError, onProgress, probeFile } from "./lib/ipc";
+import { cancelJob, convertFile, onJobCancelled, onJobDone, onJobError, onProgress, probeFile } from "./lib/ipc";
 import type { MediaInfo } from "./lib/ipc";
+import { deriveOutputPath } from "./lib/paths";
 import { DEFAULT_FORMAT, DEFAULT_PRESET, OUTPUT_FORMATS, VIDEO_PRESETS } from "./lib/presets";
 import type { OutputFormat, VideoPreset } from "./lib/presets";
 import { S } from "./lib/strings";
@@ -13,7 +14,7 @@ interface FileEntry {
   path: string;
   name: string;
   info: MediaInfo | null;
-  status: "pending" | "running" | "done" | "failed";
+  status: "pending" | "running" | "done" | "failed" | "cancelled";
   percent: number;
   error: string | null;
 }
@@ -44,7 +45,10 @@ export default function App() {
   const [preset, setPreset] = useState<VideoPreset>(DEFAULT_PRESET);
   const [converting, setConverting] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [outputDir, setOutputDir] = useState<string | null>(null);
   const unlisteners = useRef<Array<() => void>>([]);
+  const cancelRequested = useRef(false);
+  const runningJobId = useRef<string | null>(null);
 
   useEffect(() => {
     const setup = async () => {
@@ -66,6 +70,11 @@ export default function App() {
             prev.map((f) =>
               f.id === p.job_id ? { ...f, status: "failed", error: p.message } : f
             )
+          );
+        }),
+        await onJobCancelled((p) => {
+          setFiles((prev) =>
+            prev.map((f) => (f.id === p.job_id ? { ...f, status: "cancelled" } : f))
           );
         }),
       ];
@@ -122,14 +131,15 @@ export default function App() {
 
   const handleConvert = async () => {
     setConverting(true);
+    cancelRequested.current = false;
     const fmt = OUTPUT_FORMATS.find((f) => f.id === format)!;
 
     for (const file of files) {
+      if (cancelRequested.current) break;
       if (file.status !== "pending") continue;
-      const dir = file.path.substring(0, file.path.lastIndexOf("/"));
-      const baseName = file.name.replace(/\.[^.]+$/, "");
-      const outputPath = `${dir}/${baseName}${S.suffix}.${fmt.extension}`;
+      const outputPath = deriveOutputPath(file.path, outputDir, fmt.extension);
 
+      runningJobId.current = file.id;
       try {
         await convertFile(
           {
@@ -145,10 +155,29 @@ export default function App() {
         );
       } catch {
         // error handled via job_error event
+      } finally {
+        runningJobId.current = null;
       }
     }
 
     setConverting(false);
+  };
+
+  const handleCancel = async () => {
+    cancelRequested.current = true;
+    const jobId = runningJobId.current;
+    if (jobId) {
+      try {
+        await cancelJob(jobId);
+      } catch {
+        // job may have already finished
+      }
+    }
+  };
+
+  const handleChooseFolder = async () => {
+    const selected = await open({ directory: true });
+    if (typeof selected === "string") setOutputDir(selected);
   };
 
   const pendingCount = files.filter((f) => f.status === "pending").length;
@@ -292,6 +321,27 @@ export default function App() {
               ))}
             </select>
           </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-zinc-400">{S.saveTo}</label>
+            <button
+              onClick={handleChooseFolder}
+              disabled={converting}
+              className="text-sm px-2 py-1 bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700 disabled:opacity-50 max-w-48 truncate"
+              title={outputDir ?? S.sameFolderAsSource}
+            >
+              {outputDir ? outputDir.split("/").pop() : S.sameFolderAsSource}
+            </button>
+            {outputDir && (
+              <button
+                onClick={() => setOutputDir(null)}
+                disabled={converting}
+                className="text-zinc-600 hover:text-zinc-300 text-xs"
+                aria-label="Reset to same folder as source"
+              >
+                ✕
+              </button>
+            )}
+          </div>
           <button
             onClick={handleAddFiles}
             disabled={converting}
@@ -325,13 +375,22 @@ export default function App() {
               </p>
             </div>
           )}
-          <button
-            onClick={handleConvert}
-            disabled={converting || pendingCount === 0}
-            className="ml-auto px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            {S.convert}
-          </button>
+          {converting ? (
+            <button
+              onClick={handleCancel}
+              className="ml-auto px-6 py-2 bg-red-700 hover:bg-red-600 text-white rounded-lg font-medium transition-colors"
+            >
+              {S.cancel}
+            </button>
+          ) : (
+            <button
+              onClick={handleConvert}
+              disabled={pendingCount === 0}
+              className="ml-auto px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {S.convert}
+            </button>
+          )}
         </div>
       </div>
     </div>

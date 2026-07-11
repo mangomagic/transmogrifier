@@ -5,7 +5,7 @@ pub mod probe;
 pub mod progress;
 pub mod queue;
 
-use commands::{convert_file, probe_file};
+use commands::{cancel_job, convert_file, probe_file, CancelledJobs, RunningJobs};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -13,7 +13,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![convert_file, probe_file])
+        .manage(RunningJobs::default())
+        .manage(CancelledJobs::default())
+        .invoke_handler(tauri::generate_handler![convert_file, probe_file, cancel_job])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
