@@ -4016,7 +4016,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "transcodo"
+name = "transmogrifier"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",

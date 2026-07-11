@@ -1,7 +1,7 @@
 //! Table-driven golden tests for the FFmpeg arg builder. Any behaviour
 //! change must update these deliberately.
 
-use transcodo_lib::ffmpeg_args::{
+use transmogrifier_lib::ffmpeg_args::{
     build_args, AdvancedSettings, JobSettings, OutputFormat, VideoEncoder, VideoPreset,
 };
 

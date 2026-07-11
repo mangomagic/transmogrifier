@@ -4,11 +4,11 @@
 
 use std::path::PathBuf;
 use std::process::Command;
-use transcodo_lib::encoders::parse_hw_encoders;
-use transcodo_lib::ffmpeg_args::{
+use transmogrifier_lib::encoders::parse_hw_encoders;
+use transmogrifier_lib::ffmpeg_args::{
     build_args, AdvancedSettings, JobSettings, OutputFormat, VideoEncoder, VideoPreset,
 };
-use transcodo_lib::probe::{parse_probe, MediaInfo};
+use transmogrifier_lib::probe::{parse_probe, MediaInfo};
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -89,7 +89,7 @@ fn mov_to_mp4_produces_valid_h264_aac() {
     let fixtures = ensure_fixtures();
     let settings = JobSettings {
         input_path: fixtures.join("sample.mov").to_string_lossy().into_owned(),
-        output_path: out_path("transcodo_it_sample (converted).mp4"),
+        output_path: out_path("transmogrifier_it_sample (converted).mp4"),
         format: OutputFormat::Mp4,
         video_preset: VideoPreset::Medium,
         trim_start: None,
@@ -115,7 +115,7 @@ fn mov_to_mp3_extracts_audio() {
     let fixtures = ensure_fixtures();
     let settings = JobSettings {
         input_path: fixtures.join("sample.mov").to_string_lossy().into_owned(),
-        output_path: out_path("transcodo_it_sample (converted).mp3"),
+        output_path: out_path("transmogrifier_it_sample (converted).mp3"),
         format: OutputFormat::Mp3,
         video_preset: VideoPreset::High,
         trim_start: None,
@@ -136,7 +136,7 @@ fn mkv_to_mp4_converts() {
     let fixtures = ensure_fixtures();
     let settings = JobSettings {
         input_path: fixtures.join("sample.mkv").to_string_lossy().into_owned(),
-        output_path: out_path("transcodo_it_mkv (converted).mp4"),
+        output_path: out_path("transmogrifier_it_mkv (converted).mp4"),
         format: OutputFormat::Mp4,
         video_preset: VideoPreset::SmallFile,
         trim_start: None,
@@ -169,7 +169,7 @@ fn batch_of_five_with_one_corrupt_completes() {
         .enumerate()
         .map(|(i, (name, _))| {
             let input = fixtures.join(name).to_string_lossy().into_owned();
-            let output = out_path(&format!("transcodo_it_batch_{i} (converted).mp4"));
+            let output = out_path(&format!("transmogrifier_it_batch_{i} (converted).mp4"));
             std::thread::spawn(move || {
                 let settings = JobSettings {
                     input_path: input,
@@ -212,7 +212,7 @@ fn trimmed_output_duration_matches_request() {
     let fixtures = ensure_fixtures();
     let settings = JobSettings {
         input_path: fixtures.join("sample.mov").to_string_lossy().into_owned(),
-        output_path: out_path("transcodo_it_trim (converted).mp4"),
+        output_path: out_path("transmogrifier_it_trim (converted).mp4"),
         format: OutputFormat::Mp4,
         video_preset: VideoPreset::Medium,
         trim_start: Some(0.5),
@@ -233,7 +233,7 @@ fn gif_export_with_trim() {
     let fixtures = ensure_fixtures();
     let settings = JobSettings {
         input_path: fixtures.join("sample.mov").to_string_lossy().into_owned(),
-        output_path: out_path("transcodo_it_clip (converted).gif"),
+        output_path: out_path("transmogrifier_it_clip (converted).gif"),
         format: OutputFormat::Gif,
         video_preset: VideoPreset::Medium,
         trim_start: Some(0.0),
@@ -251,7 +251,7 @@ fn advanced_resolution_cap_downscales() {
     let fixtures = ensure_fixtures();
     let settings = JobSettings {
         input_path: fixtures.join("sample.mov").to_string_lossy().into_owned(),
-        output_path: out_path("transcodo_it_scaled (converted).mp4"),
+        output_path: out_path("transmogrifier_it_scaled (converted).mp4"),
         format: OutputFormat::Mp4,
         video_preset: VideoPreset::High,
         trim_start: None,
@@ -284,7 +284,7 @@ fn videotoolbox_encode_works_when_available() {
     let fixtures = ensure_fixtures();
     let settings = JobSettings {
         input_path: fixtures.join("sample.mov").to_string_lossy().into_owned(),
-        output_path: out_path("transcodo_it_vt (converted).mp4"),
+        output_path: out_path("transmogrifier_it_vt (converted).mp4"),
         format: OutputFormat::Mp4,
         video_preset: VideoPreset::High,
         trim_start: None,
@@ -305,7 +305,7 @@ fn corrupt_input_fails_cleanly() {
     let fixtures = ensure_fixtures();
     let settings = JobSettings {
         input_path: fixtures.join("corrupt.mov").to_string_lossy().into_owned(),
-        output_path: out_path("transcodo_it_corrupt (converted).mp4"),
+        output_path: out_path("transmogrifier_it_corrupt (converted).mp4"),
         format: OutputFormat::Mp4,
         video_preset: VideoPreset::Medium,
         trim_start: None,

@@ -1,5 +1,5 @@
 export const S = {
-  appTitle: "Transcodo",
+  appTitle: "Transmogrifier",
   dropZoneHint: "Drop files here or click to add",
   dropZoneSub: "Supports MOV, MP4, MKV, AVI, WMV, WebM, MP3, WAV, FLAC and more",
   addFiles: "Add Files",

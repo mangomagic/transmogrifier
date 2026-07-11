@@ -4,7 +4,7 @@
       "Bash(npx tsc *)",
       "Bash(npx eslint *)",
       "Bash(npx vitest *)",
-      "Bash(pkill -x transcodo)",
+      "Bash(pkill -x transmogrifier)",
       "Bash(break)"
     ]
   }

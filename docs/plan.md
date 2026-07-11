@@ -262,4 +262,4 @@ Claude Code is most effective when every change can be checked without human eye
 1. Subtitle tracks in MKV/MOV inputs — preserve, burn-in option, or drop (v1 default: preserve where container allows)?
 2. Should completed-job history persist across app restarts, or clear on quit?
 3. Linux priority: is `.AppImage` alone acceptable for v1, or is a `.deb` required?
-4. App name — needed before M4 (bundle IDs, installer names). Working title suggestions: **Recode**, **Transcodo**, **ClipKit**.
+4. ~~App name~~ — **resolved 2026-07-11: Transmogrifier** (bundle id `com.snowcrash.transmogrifier`).
