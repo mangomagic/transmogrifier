@@ -88,6 +88,13 @@ impl Queue {
     pub fn has_pending(&self) -> bool {
         self.jobs.iter().any(|j| j.status == JobStatus::Queued)
     }
+
+    /// True while any job is queued or running — quitting now would lose work.
+    pub fn has_active(&self) -> bool {
+        self.jobs
+            .iter()
+            .any(|j| matches!(j.status, JobStatus::Queued | JobStatus::Running))
+    }
 }
 
 #[cfg(test)]
@@ -157,6 +164,21 @@ mod tests {
         q.set_status("j1", JobStatus::Failed);
         // Failure frees the slot; next job claimable
         assert_eq!(q.claim_next(1).map(|j| j.id), Some("j2".to_string()));
+    }
+
+    #[test]
+    fn has_active_reflects_queued_and_running_only() {
+        let mut q = Queue::default();
+        assert!(!q.has_active());
+        q.push(make_job("j1"));
+        assert!(q.has_active(), "queued counts as active");
+        q.claim_next(1).unwrap();
+        assert!(q.has_active(), "running counts as active");
+        q.set_status("j1", JobStatus::Done);
+        assert!(!q.has_active());
+        q.push(make_job("j2"));
+        q.set_status("j2", JobStatus::Cancelled);
+        assert!(!q.has_active(), "terminal states are not active");
     }
 
     #[test]

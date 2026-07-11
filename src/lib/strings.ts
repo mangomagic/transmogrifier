@@ -46,6 +46,13 @@ export const S = {
   conflictOverwrite: "Overwrite",
   conflictKeepBoth: "Keep both",
   conflictCancel: "Don't convert",
+  exitTitle: "Conversions in progress",
+  exitBody: (n: number) =>
+    n === 1
+      ? "A conversion is still in progress. Quit and cancel it? The partial output file will be removed."
+      : `${n} conversions are still in progress. Quit and cancel them? Partial output files will be removed.`,
+  exitQuit: "Quit anyway",
+  exitStay: "Keep converting",
   updateAvailable: (version: string) => `Update ${version} available`,
   updateInstall: "Restart & update",
   updateInstalling: "Updating…",

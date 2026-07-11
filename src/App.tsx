@@ -3,12 +3,14 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import {
   cancelAll,
+  confirmExit,
   enqueueJobs,
   expandPaths,
   generateThumbnail,
   onJobCancelled,
   onJobDone,
   onJobError,
+  onExitRequested,
   onJobStarted,
   onProgress,
   probeFile,
@@ -31,6 +33,7 @@ import { FileRow } from "./components/FileRow";
 import type { FileEntry } from "./components/FileRow";
 import { ConflictDialog } from "./components/ConflictDialog";
 import { ControlsBar } from "./components/ControlsBar";
+import { ExitDialog } from "./components/ExitDialog";
 import { UpdateBanner } from "./components/UpdateBanner";
 import "./index.css";
 
@@ -52,6 +55,7 @@ export default function App() {
     resolved: ResolvedOutput[];
     extension: string;
   } | null>(null);
+  const [exitPromptOpen, setExitPromptOpen] = useState(false);
   const settingsLoaded = useRef(false);
 
   const updateFile = (id: string, patch: Partial<FileEntry>) => {
@@ -65,6 +69,8 @@ export default function App() {
       onJobDone((p) => updateFile(p.job_id, { status: "done", percent: 100 })),
       onJobError((p) => updateFile(p.job_id, { status: "failed", error: p.message })),
       onJobCancelled((p) => updateFile(p.job_id, { status: "cancelled" })),
+      // Backend blocked a close/quit because conversions are active
+      onExitRequested(() => setExitPromptOpen(true)),
       // Tauri native file drop (not HTML5 DnD) — delivers real paths on all platforms
       listen<{ paths: string[] }>("tauri://drag-drop", (e) => addPaths(e.payload.paths)),
     ];
@@ -335,6 +341,13 @@ export default function App() {
           onOverwrite={handleConflictOverwrite}
           onKeepBoth={handleConflictKeepBoth}
           onCancel={() => setConflict(null)}
+        />
+      )}
+      {exitPromptOpen && (
+        <ExitDialog
+          activeCount={files.filter((f) => f.status === "pending" || f.status === "running").length}
+          onQuit={() => confirmExit()}
+          onStay={() => setExitPromptOpen(false)}
         />
       )}
     </div>

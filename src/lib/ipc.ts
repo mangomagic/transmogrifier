@@ -7,12 +7,14 @@ import {
   CMD_EXPAND_PATHS,
   CMD_GENERATE_FILMSTRIP,
   CMD_GENERATE_THUMBNAIL,
+  CMD_CONFIRM_EXIT,
   CMD_GET_QUEUE_STATE,
   CMD_PREVIEW_ARGS,
   CMD_PROBE_FILE,
   CMD_PROBE_HW_ENCODERS,
   CMD_RESOLVE_OUTPUT_PATHS,
   CMD_SET_CONCURRENCY,
+  EVT_EXIT_REQUESTED,
   EVT_JOB_CANCELLED,
   EVT_JOB_DONE,
   EVT_JOB_ERROR,
@@ -143,6 +145,14 @@ export function expandPaths(paths: string[]): Promise<string[]> {
 
 export function getQueueState(): Promise<JobSnapshot[]> {
   return invoke<JobSnapshot[]>(CMD_GET_QUEUE_STATE);
+}
+
+export function confirmExit(): Promise<void> {
+  return invoke<void>(CMD_CONFIRM_EXIT);
+}
+
+export function onExitRequested(cb: () => void): Promise<UnlistenFn> {
+  return listen(EVT_EXIT_REQUESTED, () => cb());
 }
 
 export function resolveOutputPaths(
