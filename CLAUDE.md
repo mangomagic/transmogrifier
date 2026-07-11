@@ -23,6 +23,7 @@ Run `npm run check` after every change. Do not consider a task complete while it
   - `codec_args.rs` — pure codec/filter/metadata arg helpers used by `build_args`.
   - `encoders.rs` — pure parser: `ffmpeg -encoders` output → available hardware encoders.
   - `media_paths.rs` — dropped-path expansion: folders → recursive media-file walk, media-extension filter, dedupe.
+  - `output_naming.rs` — pure output-path resolution: clean names, collision suffixes, conflict flagging (existence predicate injected).
   - `progress.rs` — pure fn: ffmpeg `-progress` output line → `ProgressEvent`.
   - `probe.rs` — ffprobe JSON → `MediaInfo`.
   - `queue.rs` — job state machine (`queued → running → done | failed | cancelled`); `claim_next()` is the scheduler's atomic claim step.
@@ -36,7 +37,7 @@ Run `npm run check` after every change. Do not consider a task complete while it
 
 ## Invariants — never violate
 
-1. Never overwrite source files. Default output name appends ` (converted)`.
+1. Never overwrite anything silently. Sources are never valid outputs. Output naming (`output_naming.rs`): clean `name.ext` when free; ` (converted)` / ` (converted N)` suffixes only to dodge collisions with sources, other batch jobs, or (on "Keep both") existing files. Pre-existing files trigger the conflict prompt (Overwrite / Keep both / Don't convert); ffmpeg runs with `-n` unless the user explicitly chose Overwrite (`-y`).
 2. All FFmpeg arguments flow through `ffmpeg_args.rs`. The UI never constructs FFmpeg args.
 3. Every MP4 output gets `-movflags +faststart`.
 4. Rotation and colour metadata must be copied from input to output.

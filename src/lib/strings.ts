@@ -38,6 +38,14 @@ export const S = {
   keep: "Keep",
   ffmpegFlags: "FFmpeg flags",
   fastTrimHint: "Fast trim: no re-encode (cuts snap to keyframes)",
+  conflictTitle: "Files already exist",
+  conflictBody: (n: number) =>
+    n === 1
+      ? "This file already exists in the output location:"
+      : `These ${n} files already exist in the output location:`,
+  conflictOverwrite: "Overwrite",
+  conflictKeepBoth: "Keep both",
+  conflictCancel: "Don't convert",
   updateAvailable: (version: string) => `Update ${version} available`,
   updateInstall: "Restart & update",
   updateInstalling: "Updating…",

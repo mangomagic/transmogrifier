@@ -105,6 +105,7 @@ mod tests {
             trim_end: None,
             advanced: None,
             stream_copy: false,
+            allow_overwrite: false,
         }
     }
 

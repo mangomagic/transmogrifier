@@ -185,3 +185,15 @@ pub fn preview_args(settings: JobSettings) -> Vec<String> {
 pub fn expand_paths(paths: Vec<String>) -> Vec<String> {
     crate::media_paths::expand_media_paths(paths)
 }
+
+/// Resolve output paths for a batch: clean names when free, suffixes to
+/// avoid sources/batch collisions. With avoid_existing=false, paths that
+/// exist on disk come back flagged so the UI can prompt; with true they
+/// are uniquified past disk files.
+#[tauri::command]
+pub fn resolve_output_paths(
+    reqs: Vec<crate::output_naming::NamingRequest>,
+    avoid_existing: bool,
+) -> Vec<crate::output_naming::ResolvedOutput> {
+    crate::output_naming::resolve_outputs(&reqs, avoid_existing, |p| std::path::Path::new(p).exists())
+}

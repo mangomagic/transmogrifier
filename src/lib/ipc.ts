@@ -10,6 +10,7 @@ import {
   CMD_PREVIEW_ARGS,
   CMD_PROBE_FILE,
   CMD_PROBE_HW_ENCODERS,
+  CMD_RESOLVE_OUTPUT_PATHS,
   CMD_SET_CONCURRENCY,
   EVT_JOB_CANCELLED,
   EVT_JOB_DONE,
@@ -38,6 +39,18 @@ export interface JobSettings {
   trim_end: number | null;
   advanced: AdvancedSettings | null;
   stream_copy: boolean;
+  allow_overwrite: boolean;
+}
+
+export interface NamingRequest {
+  input_path: string;
+  output_dir: string | null;
+  extension: string;
+}
+
+export interface ResolvedOutput {
+  path: string;
+  exists: boolean;
 }
 
 export interface EnqueueJob {
@@ -118,6 +131,16 @@ export function previewArgs(settings: JobSettings): Promise<string[]> {
 
 export function expandPaths(paths: string[]): Promise<string[]> {
   return invoke<string[]>(CMD_EXPAND_PATHS, { paths });
+}
+
+export function resolveOutputPaths(
+  reqs: NamingRequest[],
+  avoidExisting: boolean
+): Promise<ResolvedOutput[]> {
+  return invoke<ResolvedOutput[]>(CMD_RESOLVE_OUTPUT_PATHS, {
+    reqs,
+    avoidExisting,
+  });
 }
 
 export function onProgress(

@@ -15,6 +15,7 @@ fn settings(format: OutputFormat, preset: VideoPreset) -> JobSettings {
         trim_end: None,
         advanced: None,
         stream_copy: false,
+        allow_overwrite: false,
     }
 }
 
@@ -24,7 +25,7 @@ fn mp4_high_golden() {
     assert_eq!(
         args,
         vec![
-            "-y", "-i", "/in/clip.mov",
+            "-n", "-i", "/in/clip.mov",
             "-c:v", "libx264", "-crf", "20", "-preset", "medium",
             "-c:a", "aac", "-b:a", "192k",
             "-map_metadata", "0", "-map_chapters", "0",
@@ -243,7 +244,7 @@ fn stream_copy_trim_golden() {
     assert_eq!(
         args,
         vec![
-            "-y", "-ss", "1.000", "-i", "/in/clip.mov", "-t", "1.000",
+            "-n", "-ss", "1.000", "-i", "/in/clip.mov", "-t", "1.000",
             "-c", "copy",
             "-map_metadata", "0", "-map_chapters", "0",
             "-movflags", "+faststart",
@@ -277,4 +278,20 @@ fn stream_copy_ignored_for_non_container_formats() {
             "{format:?} must ignore stream_copy"
         );
     }
+}
+
+#[test]
+fn default_never_overwrites() {
+    let args = build_args(&settings(OutputFormat::Mp4, VideoPreset::High));
+    assert_eq!(args[0], "-n", "ffmpeg must refuse to overwrite by default");
+    assert!(!args.contains(&"-y".to_string()));
+}
+
+#[test]
+fn explicit_overwrite_uses_dash_y() {
+    let mut s = settings(OutputFormat::Mp4, VideoPreset::High);
+    s.allow_overwrite = true;
+    let args = build_args(&s);
+    assert_eq!(args[0], "-y");
+    assert!(!args.contains(&"-n".to_string()));
 }

@@ -58,10 +58,17 @@ pub struct JobSettings {
     /// src/lib/fasttrim.ts); honoured only for MP4/MKV/MOV outputs.
     #[serde(default)]
     pub stream_copy: bool,
+    /// Pass -y (overwrite) only when the user explicitly approved replacing
+    /// an existing file; otherwise -n makes ffmpeg refuse, so a file that
+    /// appears between the conflict check and the run fails loudly instead
+    /// of being clobbered.
+    #[serde(default)]
+    pub allow_overwrite: bool,
 }
 
 pub fn build_args(settings: &JobSettings) -> Vec<String> {
-    let mut args: Vec<String> = vec!["-y".into()];
+    let overwrite_flag = if settings.allow_overwrite { "-y" } else { "-n" };
+    let mut args: Vec<String> = vec![overwrite_flag.into()];
 
     // -ss before -i: fast keyframe seek, frame-accurate when re-encoding
     if let Some(start) = settings.trim_start {

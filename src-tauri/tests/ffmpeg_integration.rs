@@ -96,6 +96,7 @@ fn mov_to_mp4_produces_valid_h264_aac() {
         trim_end: None,
         advanced: None,
         stream_copy: false,
+        allow_overwrite: false,
     };
 
     let info = convert_and_probe(&settings);
@@ -123,6 +124,7 @@ fn mov_to_mp3_extracts_audio() {
         trim_end: None,
         advanced: None,
         stream_copy: false,
+        allow_overwrite: false,
     };
 
     let info = convert_and_probe(&settings);
@@ -145,6 +147,7 @@ fn mkv_to_mp4_converts() {
         trim_end: None,
         advanced: None,
         stream_copy: false,
+        allow_overwrite: false,
     };
 
     let info = convert_and_probe(&settings);
@@ -183,6 +186,7 @@ fn batch_of_five_with_one_corrupt_completes() {
                     trim_end: None,
                     advanced: None,
                     stream_copy: false,
+                    allow_overwrite: false,
                 };
                 let status = Command::new(sidecar("ffmpeg"))
                     .args(&build_args(&settings))
@@ -223,6 +227,7 @@ fn trimmed_output_duration_matches_request() {
         trim_end: Some(1.5),
         advanced: None,
         stream_copy: false,
+        allow_overwrite: false,
     };
 
     let info = convert_and_probe(&settings);
@@ -245,6 +250,7 @@ fn gif_export_with_trim() {
         trim_end: Some(1.0),
         advanced: None,
         stream_copy: false,
+        allow_overwrite: false,
     };
 
     let info = convert_and_probe(&settings);
@@ -267,6 +273,7 @@ fn advanced_resolution_cap_downscales() {
             ..Default::default()
         }),
         stream_copy: false,
+        allow_overwrite: false,
     };
 
     let info = convert_and_probe(&settings);
@@ -301,6 +308,7 @@ fn videotoolbox_encode_works_when_available() {
             ..Default::default()
         }),
         stream_copy: false,
+        allow_overwrite: false,
     };
 
     let info = convert_and_probe(&settings);
@@ -320,6 +328,7 @@ fn corrupt_input_fails_cleanly() {
         trim_end: None,
         advanced: None,
         stream_copy: false,
+        allow_overwrite: false,
     };
 
     let args = build_args(&settings);
@@ -347,6 +356,7 @@ fn stream_copy_trim_is_keyframe_accurate() {
         trim_end: Some(2.0),
         advanced: None,
         stream_copy: true,
+        allow_overwrite: false,
     };
 
     let info = convert_and_probe(&settings);

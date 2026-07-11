@@ -4,6 +4,7 @@ pub mod encoders;
 pub mod ffmpeg_args;
 pub mod ipc_constants;
 pub mod media_paths;
+pub mod output_naming;
 pub mod probe;
 pub mod progress;
 pub mod queue;
@@ -14,7 +15,7 @@ pub mod thumbs;
 
 use commands::{
     cancel_all, cancel_job, enqueue_jobs, expand_paths, preview_args, probe_file,
-    probe_hw_encoders, set_concurrency, CancelledJobs, RunningJobs,
+    probe_hw_encoders, resolve_output_paths, set_concurrency, CancelledJobs, RunningJobs,
 };
 use scheduler::QueueState;
 use thumb_commands::{generate_filmstrip, generate_thumbnail};
@@ -41,6 +42,7 @@ pub fn run() {
             generate_filmstrip,
             probe_hw_encoders,
             preview_args,
+            resolve_output_paths,
             expand_paths
         ])
         .run(tauri::generate_context!())

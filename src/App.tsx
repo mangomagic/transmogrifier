@@ -13,19 +13,21 @@ import {
   onProgress,
   probeFile,
   probeHwEncoders,
+  resolveOutputPaths,
   setConcurrency as ipcSetConcurrency,
 } from "./lib/ipc";
+import type { ResolvedOutput } from "./lib/ipc";
 import { buildAdvancedSettings, DEFAULT_ADVANCED_UI } from "./lib/advanced";
 import type { AdvancedUi } from "./lib/advanced";
 import { conversionProgress } from "./lib/batch";
 import { canFastTrim } from "./lib/fasttrim";
-import { deriveOutputPath } from "./lib/paths";
 import { DEFAULT_FORMAT, DEFAULT_PRESET, OUTPUT_FORMATS } from "./lib/presets";
 import type { OutputFormat, VideoPreset } from "./lib/presets";
 import { loadSettings, saveSettings } from "./lib/settings";
 import { S } from "./lib/strings";
 import { FileRow } from "./components/FileRow";
 import type { FileEntry } from "./components/FileRow";
+import { ConflictDialog } from "./components/ConflictDialog";
 import { ControlsBar } from "./components/ControlsBar";
 import { UpdateBanner } from "./components/UpdateBanner";
 import "./index.css";
@@ -43,6 +45,11 @@ export default function App() {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [advancedUi, setAdvancedUi] = useState<AdvancedUi>(DEFAULT_ADVANCED_UI);
   const [hwEncoders, setHwEncoders] = useState<string[]>([]);
+  const [conflict, setConflict] = useState<{
+    pending: FileEntry[];
+    resolved: ResolvedOutput[];
+    extension: string;
+  } | null>(null);
   const settingsLoaded = useRef(false);
 
   const updateFile = (id: string, patch: Partial<FileEntry>) => {
@@ -147,33 +154,69 @@ export default function App() {
     return us > 0 ? us : null;
   };
 
-  const handleConvert = async () => {
-    const fmt = OUTPUT_FORMATS.find((f) => f.id === format)!;
-    const pending = files.filter((f) => f.status === "pending");
+  const namingRequests = (pending: FileEntry[], extension: string) =>
+    pending.map((f) => ({
+      input_path: f.path,
+      output_dir: outputDir,
+      extension,
+    }));
+
+  const enqueueBatch = async (pending: FileEntry[], outputs: ResolvedOutput[]) => {
     // Advanced settings only shape video-container outputs
     const advanced = ["Mp4", "Mkv", "Mov"].includes(format)
       ? buildAdvancedSettings(advancedUi, hwEncoders)
       : null;
     await enqueueJobs(
-      pending.map((file) => {
+      pending.map((file, i) => {
         const hasTrim = file.trimStart != null || file.trimEnd != null;
         const streamCopy = hasTrim && canFastTrim(file.info, format, preset, advancedUi);
         return {
           job_id: file.id,
           settings: {
             input_path: file.path,
-            output_path: deriveOutputPath(file.path, outputDir, fmt.extension),
+            output_path: outputs[i].path,
             format,
             video_preset: preset,
             trim_start: file.trimStart,
             trim_end: file.trimEnd,
             advanced: streamCopy ? null : advanced,
             stream_copy: streamCopy,
+            // -y only for files the user explicitly chose to overwrite
+            allow_overwrite: outputs[i].exists,
           },
           duration_us: effectiveDurationUs(file),
         };
       })
     );
+  };
+
+  const handleConvert = async () => {
+    const fmt = OUTPUT_FORMATS.find((f) => f.id === format)!;
+    const pending = files.filter((f) => f.status === "pending");
+    if (pending.length === 0) return;
+    const resolved = await resolveOutputPaths(namingRequests(pending, fmt.extension), false);
+    if (resolved.some((r) => r.exists)) {
+      setConflict({ pending, resolved, extension: fmt.extension });
+      return;
+    }
+    await enqueueBatch(pending, resolved);
+  };
+
+  const handleConflictOverwrite = async () => {
+    if (!conflict) return;
+    setConflict(null);
+    await enqueueBatch(conflict.pending, conflict.resolved);
+  };
+
+  const handleConflictKeepBoth = async () => {
+    if (!conflict) return;
+    setConflict(null);
+    // Re-resolve, this time steering around every existing file
+    const resolved = await resolveOutputPaths(
+      namingRequests(conflict.pending, conflict.extension),
+      true
+    );
+    await enqueueBatch(conflict.pending, resolved);
   };
 
   const handleTrimChange = (id: string, trim: { start: number | null; end: number | null }) => {
@@ -267,6 +310,14 @@ export default function App() {
         onConvert={handleConvert}
         onCancel={() => cancelAll()}
       />
+      {conflict && (
+        <ConflictDialog
+          conflictPaths={conflict.resolved.filter((r) => r.exists).map((r) => r.path)}
+          onOverwrite={handleConflictOverwrite}
+          onKeepBoth={handleConflictKeepBoth}
+          onCancel={() => setConflict(null)}
+        />
+      )}
     </div>
   );
 }

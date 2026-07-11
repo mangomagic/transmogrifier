@@ -23,7 +23,10 @@ Generate test media first if needed: `./fixtures/gen_fixtures.sh`
 
 ## Conversion & queue
 
-- ⬜ **Basic convert** — drop `fixtures/sample.mov`, Convert with defaults (MP4/High). Output `sample (converted).mp4` appears next to the source and plays in QuickTime.
+- ⬜ **Basic convert** — drop `fixtures/sample.mov`, Convert with defaults (MP4/High). Output is `sample.mp4` (clean name — no suffix, since the extension differs) next to the source and plays in QuickTime.
+- ⬜ **Same-extension convert** — convert an `.mp4` to MP4: output is `name (converted).mp4` (never touches the source).
+- ⬜ **Conflict prompt** — convert `sample.mov` to MP4 twice. Second run shows the "Files already exist" dialog listing `sample.mp4`. Verify all three buttons: *Don't convert* leaves the file untouched; *Keep both* produces `sample (converted).mp4` (then `(converted 2)` on a third run); *Overwrite* replaces it (check mtime changes).
+- ⬜ **Batch name collisions** — add `clip.mov` and `clip.avi` from the same folder, convert both to MP4: outputs are `clip.mp4` and `clip (converted).mp4`, no prompt, nothing clobbered.
 - ⬜ **Progress display** — per-file bar fills with % badge; overall bar and "Converting X of Y" text update. (Fixture clips finish near-instantly — use a longer real video.)
 - ⬜ **Batch of 5 with corrupt file** — drop `sample.mov`, `sample.avi`, `corrupt.mov`, `sample.mkv`, `vfr.mkv`, Convert with Parallel=2. Four complete with green ✓, `corrupt.mov` shows red *failed*; queue never stalls.
 - ✅ **Cancel mid-conversion** *(2026-07-11, pre-queue implementation)* — start a long conversion, hit Cancel: ffmpeg process dies, partial output file is deleted, row shows *cancelled*.
