@@ -16,7 +16,9 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-store": "^2.4.3",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
@@ -32,6 +34,8 @@
     "@vitejs/plugin-react": "^4.6.0",
     "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^10.7.0",
+    "ffmpeg-static": "^5.3.0",
+    "ffprobe-static": "^3.1.0",
     "jsdom": "^29.1.1",
     "tailwindcss": "^4.3.2",
     "typescript": "~5.8.3",

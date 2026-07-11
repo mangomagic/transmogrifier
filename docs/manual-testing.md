@@ -49,9 +49,19 @@ Generate test media first if needed: `./fixtures/gen_fixtures.sh`
 - ⬜ **Light/dark theme** — toggle macOS appearance while the app is open; colours follow the OS in both modes and text stays readable.
 - ⬜ **Window resize** — shrink to minimum (700×500); controls wrap without clipping or overlap.
 
+## Cross-platform & updates (M4)
+
+Requires the GitHub repo + secrets from `docs/release.md` first.
+
+- ⬜ **CI matrix** — push to GitHub; ci.yml goes green on macOS, Linux, Windows.
+- ⬜ **Release artifacts** — push a `v*` tag; release.yml produces a draft release with .dmg (arm64 + x64), .AppImage/.deb, .msi/.exe and `latest.json`.
+- ⬜ **Auto-update end-to-end** — install a v0.1.0 build, publish v0.1.1; on launch the blue update banner appears; "Restart & update" installs and relaunches the new version.
+- ⬜ **Windows QA** — drag-drop, convert, cancel, trim on a Windows machine (path handling uses `\` — deriveOutputPath is unit-tested but the full flow is not).
+- ⬜ **Linux QA** — same sweep on the AppImage.
+
 ## Not yet implemented (don't test)
 
 - Per-file format overrides, "Show in Finder" link, dock badge progress
 - Fast trim via stream copy (all trims currently re-encode)
 - Folder drop with recursive expansion
-- Auto-update (M4)
+- Code signing / notarization (M5)

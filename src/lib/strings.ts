@@ -37,4 +37,7 @@ export const S = {
   stripMetadata: "Strip metadata",
   keep: "Keep",
   ffmpegFlags: "FFmpeg flags",
+  updateAvailable: (version: string) => `Update ${version} available`,
+  updateInstall: "Restart & update",
+  updateInstalling: "Updating…",
 };

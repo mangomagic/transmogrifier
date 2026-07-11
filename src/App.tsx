@@ -24,6 +24,7 @@ import { S } from "./lib/strings";
 import { FileRow } from "./components/FileRow";
 import type { FileEntry } from "./components/FileRow";
 import { ControlsBar } from "./components/ControlsBar";
+import { UpdateBanner } from "./components/UpdateBanner";
 import "./index.css";
 
 let jobSeq = 0;
@@ -199,6 +200,7 @@ export default function App() {
         setIsDragOver(false);
       }}
     >
+      <UpdateBanner />
       <div
         className={`flex-1 overflow-y-auto p-4 transition-colors ${
           isDragOver ? "bg-blue-100 dark:bg-blue-900/20 border-2 border-dashed border-blue-500" : ""
