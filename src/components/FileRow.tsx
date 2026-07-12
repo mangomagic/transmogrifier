@@ -16,6 +16,9 @@ export interface FileEntry {
   error: string | null;
   trimStart: number | null;
   trimEnd: number | null;
+  /// True until the probe/thumbnail pass finishes; Convert stays disabled
+  /// while any file in the list is still loading.
+  probing: boolean;
 }
 
 function formatDuration(s: number | null): string {
@@ -94,6 +97,11 @@ export function FileRow({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="truncate font-medium text-sm">{file.name}</span>
+            {!file.info && file.probing && (
+              <span className="text-xs text-zinc-400 dark:text-zinc-600 animate-pulse shrink-0">
+                {S.reading}
+              </span>
+            )}
             {file.info && (
               <span className="text-xs text-zinc-500 shrink-0">
                 {file.info.width && file.info.height

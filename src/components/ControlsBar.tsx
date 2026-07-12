@@ -23,6 +23,8 @@ export interface ControlsBarProps {
   hwEncoders: string[];
   showAudioExtractNote: boolean;
   converting: boolean;
+  /// True while added files are still being probed — Convert stays disabled
+  loading: boolean;
   pendingCount: number;
   /// 1-based position of the file(s) currently converting
   position: number;
@@ -122,6 +124,11 @@ export function ControlsBar(p: ControlsBarProps) {
             </p>
           </div>
         )}
+        {!p.converting && p.loading && (
+          <span className="ml-auto text-xs text-zinc-500 dark:text-zinc-400 animate-pulse">
+            {S.loadingFiles}
+          </span>
+        )}
         {p.converting ? (
           <button
             onClick={p.onCancel}
@@ -132,8 +139,10 @@ export function ControlsBar(p: ControlsBarProps) {
         ) : (
           <button
             onClick={p.onConvert}
-            disabled={p.pendingCount === 0}
-            className="ml-auto px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            disabled={p.pendingCount === 0 || p.loading}
+            className={`px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
+              p.loading ? "" : "ml-auto"
+            }`}
           >
             {S.convert}
           </button>

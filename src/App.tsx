@@ -26,6 +26,7 @@ import { buildAdvancedSettings, DEFAULT_ADVANCED_UI } from "./lib/advanced";
 import type { AdvancedUi } from "./lib/advanced";
 import { conversionProgress } from "./lib/batch";
 import { canFastTrim } from "./lib/fasttrim";
+import { runWithConcurrency } from "./lib/pool";
 import { DEFAULT_FORMAT, DEFAULT_PRESET, OUTPUT_FORMATS } from "./lib/presets";
 import type { OutputFormat, VideoPreset } from "./lib/presets";
 import { loadSettings, saveSettings } from "./lib/settings";
@@ -115,6 +116,8 @@ export default function App() {
     return () => clearInterval(timer);
   }, [hasOpenWork]);
 
+  const PROBE_CONCURRENCY = 4;
+
   const addPaths = async (rawPaths: string[]) => {
     // Folders expand recursively to their media files (backend walk)
     let paths = rawPaths;
@@ -123,44 +126,53 @@ export default function App() {
     } catch {
       // fall back to the raw list; non-files will fail at probe time
     }
-    for (const path of paths) {
-      const name = path.split("/").pop() ?? path;
-      const id = nextId();
-      const entry: FileEntry = {
-        id,
+
+    // Build every entry up front so the whole batch appears immediately,
+    // each marked probing (Convert stays disabled until all settle).
+    const seen = new Set<string>();
+    const entries: FileEntry[] = paths
+      .filter((p) => !seen.has(p) && (seen.add(p), true))
+      .map((path) => ({
+        id: nextId(),
         path,
-        name,
+        name: path.split(/[/\\]/).pop() ?? path,
         info: null,
         thumbnail: null,
-        status: "pending",
+        status: "pending" as const,
         percent: 0,
         error: null,
         trimStart: null,
         trimEnd: null,
-      };
-      let duplicate = false;
-      setFiles((prev) => {
-        if (prev.some((f) => f.path === path && f.status === "pending")) {
-          duplicate = true;
-          return prev;
-        }
-        return [...prev, entry];
-      });
-      if (duplicate) continue;
+        probing: true,
+      }));
 
+    // Dedupe against the list inside the updater (the drag-drop listener
+    // holds a stale closure over `files`) — and keep it side-effect free.
+    setFiles((prev) => {
+      const existing = new Set(
+        prev.filter((f) => f.status === "pending").map((f) => f.path)
+      );
+      return [...prev, ...entries.filter((e) => !existing.has(e.path))];
+    });
+
+    // Probe + thumbnail with bounded concurrency. Entries dropped as
+    // duplicates just no-op in updateFile.
+    await runWithConcurrency(entries, PROBE_CONCURRENCY, async (entry) => {
       try {
-        const info = await probeFile(path);
-        updateFile(id, { info });
+        const info = await probeFile(entry.path);
+        updateFile(entry.id, { info });
         try {
-          const thumbnail = await generateThumbnail(path, info.duration_s);
-          updateFile(id, { thumbnail });
+          const thumbnail = await generateThumbnail(entry.path, info.duration_s);
+          updateFile(entry.id, { thumbnail });
         } catch {
           // audio-only or no frame — placeholder icon stays
         }
       } catch {
         // probe failed — still allow the file to queue; conversion will surface the error
+      } finally {
+        updateFile(entry.id, { probing: false });
       }
-    }
+    });
   };
 
   const handleAddFiles = async () => {
@@ -219,7 +231,9 @@ export default function App() {
   const handleConvert = async () => {
     const fmt = OUTPUT_FORMATS.find((f) => f.id === format)!;
     const pending = files.filter((f) => f.status === "pending");
-    if (pending.length === 0) return;
+    // Bulk adds must finish loading first: converting mid-probe would
+    // enqueue a partial batch with unknown durations (broken progress %)
+    if (pending.length === 0 || pending.some((f) => f.probing)) return;
     const resolved = await resolveOutputPaths(namingRequests(pending, fmt.extension), false);
     if (resolved.some((r) => r.exists)) {
       setConflict({ pending, resolved, extension: fmt.extension });
@@ -260,6 +274,7 @@ export default function App() {
   };
 
   const pendingCount = files.filter((f) => f.status === "pending").length;
+  const loading = files.some((f) => f.status === "pending" && f.probing);
   const progress = conversionProgress(files);
   const converting = progress.active;
 
@@ -333,6 +348,7 @@ export default function App() {
           files.some((f) => f.status === "pending" && f.info?.video_codec)
         }
         converting={converting}
+        loading={loading}
         pendingCount={pendingCount}
         position={progress.position}
         totalCount={progress.total}

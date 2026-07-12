@@ -54,6 +54,8 @@ export const S = {
   exitQuit: "Quit anyway",
   exitStay: "Keep converting",
   poweredByFfmpeg: "Powered by FFmpeg",
+  reading: "Reading…",
+  loadingFiles: "Reading files…",
   updateAvailable: (version: string) => `Update ${version} available`,
   updateInstall: "Restart & update",
   updateInstalling: "Updating…",

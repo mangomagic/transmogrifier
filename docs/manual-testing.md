@@ -20,6 +20,7 @@ Generate test media first if needed: `./fixtures/gen_fixtures.sh`
 - ⬜ **Add Files button** — native picker opens, multi-select works, picked files appear.
 - ⬜ **Duplicate handling** — add the same file twice; only one pending row exists.
 - ⬜ **Thumbnails** — video files show a real frame thumbnail; audio files (`fixtures/sample.mp3`) show the note placeholder icon.
+- ⬜ **Bulk add gating** *(regression: 2026-07-12 Convert was clickable mid-load)* — drop 20+ files at once: every row appears immediately with a pulsing "Reading…", the Convert button stays disabled with "Reading files…" shown beside it, and only enables once all rows have metadata. Files probe ~4 at a time (list fills with thumbnails progressively).
 
 ## Conversion & queue
 
