@@ -1,13 +1,13 @@
 # Release & CI Setup
 
-## One-time GitHub setup (not yet done)
+## One-time GitHub setup (completed 2026-07-11)
 
-The repo is local-only. To activate CI and releases:
+Repo: github.com/mangomagic/transmogrifier (private). Steps that were done:
 
-1. Create the GitHub repo (e.g. `transmogrifier`) and push `main`.
+1. Done — repo created and main pushed (SSH remote).
 2. Done — updater endpoint points at `mangomagic/transmogrifier`. ~~Replace `OWNER` in `src-tauri/tauri.conf.json`~~ → `plugins.updater.endpoints`
    with the GitHub owner name.
-3. Add two repository secrets (Settings → Secrets → Actions):
+3. Done — `TAURI_SIGNING_PRIVATE_KEY` secret added (password secret unnecessary: GitHub rejects empty secrets and a missing secret resolves to "", matching the passwordless key):
    - `TAURI_SIGNING_PRIVATE_KEY` — contents of `~/.tauri/transmogrifier.key`
      (generated 2026-07-11 on the dev machine; **never commit it**)
    - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — empty string (key has no password)
