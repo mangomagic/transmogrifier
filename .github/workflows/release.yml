@@ -14,12 +14,18 @@ jobs:
         include:
           - platform: macos-latest # Apple Silicon
             args: --target aarch64-apple-darwin
-          - platform: macos-13 # Intel
+            sidecar-triple: ""
+          # Intel macOS is cross-compiled on the arm64 runner: GitHub
+          # retired the Intel (macos-13) runners.
+          - platform: macos-latest
             args: --target x86_64-apple-darwin
+            sidecar-triple: x86_64-apple-darwin
           - platform: ubuntu-22.04
             args: ""
+            sidecar-triple: ""
           - platform: windows-latest
             args: ""
+            sidecar-triple: ""
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -46,8 +52,20 @@ jobs:
 
       - run: npm ci
 
+      - name: Refetch ffmpeg for cross-compile target
+        if: matrix.sidecar-triple != ''
+        run: npm rebuild ffmpeg-static
+        env:
+          npm_config_arch: x64
+
       - name: Provision sidecar binaries
-        run: node scripts/prepare-sidecars.mjs
+        shell: bash
+        run: |
+          if [ -n "${{ matrix.sidecar-triple }}" ]; then
+            node scripts/prepare-sidecars.mjs --triple=${{ matrix.sidecar-triple }}
+          else
+            node scripts/prepare-sidecars.mjs
+          fi
 
       - uses: tauri-apps/tauri-action@v0
         env:
