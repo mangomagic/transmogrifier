@@ -26,8 +26,17 @@ Cutting a release:
 
 ```bash
 # bump "version" in package.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml
+npm install   # regenerates package-lock.json — do NOT use --package-lock-only,
+              # it can leave optional platform deps (e.g. @emnapi/*, tslib)
+              # out of sync, which fails `npm ci` on every CI runner (v0.1.1
+              # first attempt: all four release jobs failed at `npm ci` for
+              # exactly this reason)
 git tag v0.2.0 && git push origin v0.2.0
 ```
+
+If a tag's build fails and needs a fix, move the tag rather than adding a new
+one: `git tag -d vX.Y.Z && git push origin :refs/tags/vX.Y.Z`, fix, commit,
+re-tag, push.
 
 ## Logs
 
