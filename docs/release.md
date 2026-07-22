@@ -26,13 +26,22 @@ Cutting a release:
 
 ```bash
 # bump "version" in package.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml
-npm install   # regenerates package-lock.json — do NOT use --package-lock-only,
-              # it can leave optional platform deps (e.g. @emnapi/*, tslib)
-              # out of sync, which fails `npm ci` on every CI runner (v0.1.1
-              # first attempt: all four release jobs failed at `npm ci` for
-              # exactly this reason)
+nvm use 22 && rm -rf node_modules package-lock.json && npm install
 git tag v0.2.0 && git push origin v0.2.0
 ```
+
+Regenerate the lockfile under **Node 22** (ci.yml/release.yml's `node-version`),
+not whatever Node the dev machine defaults to. Tailwind v4's oxide engine ships
+a wasm32-wasi fallback with its own optionalDependencies (`@emnapi/core`,
+`@emnapi/runtime`, `tslib`); different npm versions decide differently whether
+those belong in the lockfile. A lockfile written by a newer local npm can omit
+them, and `npm ci` then fails with `Missing: @emnapi/... from lock file` on
+every CI runner — not a platform-specific failure, all four jobs die at the
+same `npm ci` step (this happened cutting v0.1.1: `--package-lock-only` under
+Node 24 was the first suspect, but the real fix was matching CI's Node version
+before regenerating). `npm ci` passing locally right after `npm install` only
+proves self-consistency on your machine's npm — it doesn't prove CI's npm
+agrees.
 
 If a tag's build fails and needs a fix, move the tag rather than adding a new
 one: `git tag -d vX.Y.Z && git push origin :refs/tags/vX.Y.Z`, fix, commit,
