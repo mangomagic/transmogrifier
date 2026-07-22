@@ -27,8 +27,21 @@ Cutting a release:
 ```bash
 # bump "version" in package.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml
 nvm use 22 && rm -rf node_modules package-lock.json && npm install
+cargo update -p tauri-plugin-log -p tauri-plugin-updater -p tauri-plugin-store \
+  -p tauri-plugin-dialog -p tauri-plugin-shell -p tauri-plugin-opener \
+  -p tauri-plugin-process --manifest-path src-tauri/Cargo.toml
 git tag v0.2.0 && git push origin v0.2.0
 ```
+
+Every Tauri plugin is declared as a loose range on both sides (`"2.8.0"` in
+Cargo.toml behaves like `^2.8.0`; `"^2.8.0"` in package.json). `npm install`
+re-resolves to whatever's newest on npm at release time, but Cargo.lock stays
+pinned to whatever was newest on crates.io whenever it was last generated —
+so the two drift independently. `tauri build` refuses to proceed on a
+mismatch ("Found version mismatched Tauri packages"), and it hit every OS at
+once cutting v0.1.1 (`tauri-plugin-log` npm had reached 2.9.0, Cargo.lock was
+still on 2.8.0). Run `cargo update` for the plugins in the same release-prep
+step as the npm lockfile regen, not just when something breaks.
 
 Regenerate the lockfile under **Node 22** (ci.yml/release.yml's `node-version`),
 not whatever Node the dev machine defaults to. Tailwind v4's oxide engine ships
